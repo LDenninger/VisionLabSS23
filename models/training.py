@@ -61,7 +61,8 @@ def train_model(model: nn.Module,
 
         # Evaluate on validation set.
         if (epoch+1) % EVAL_FREQUENCY == 0:
-            accuracy = run_epoch(model=model, dataset=eval_dataset, config=config, device=device, verbose=VERBOSE)
+            with torch.no_grad():
+                accuracy = run_epoch(model=model, dataset=eval_dataset, config=config, device=device, verbose=VERBOSE)
         if logger is not None:
             
             logger.step(
@@ -117,7 +118,7 @@ def run_epoch(model: nn.Module, dataset: torch.utils.data.DataLoader, config: di
         if config['pre_processing']['rgb2gray']:
             imgs = _rgb2grayscale(imgs).squeeze()
         if config['pre_processing']['flatten']:
-            imgs = _flatten_img(imgs, only_img_size=True).squeeze()
+            imgs = _flatten_img(imgs, only_img_size=config['pre_processing']['flatten_only_img_size']).squeeze()
 
 
         # Produce output

@@ -35,7 +35,7 @@ def run_task_1_train(exp_name: str, run_name: str):
         train_dataset, test_dataset = load_mnist_dataset()
 
 
-    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
     test_loader = DataLoader(test_dataset, batch_size=config['eval_batch_size'], shuffle=False, drop_last=True)
 
     # Initialize the model according to the config file
