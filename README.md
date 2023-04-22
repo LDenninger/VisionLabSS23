@@ -32,5 +32,5 @@ Set current experiment: `setexp [experiment name]` <br />
 Set current run: `setrun [run name]` <br />
 Check current setup: `setup` <br />
 Initialize new run: `irun -config [config name]`
- - Config file needs to be in `experiments/config` 
+ - Config file needs to be in `experiments/config` <br />
 Run a specified task: `python run.py -task [task ID]` <br />
