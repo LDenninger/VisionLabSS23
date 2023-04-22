@@ -36,7 +36,7 @@ def run_task_1_train(exp_name: str, run_name: str):
 
 
     train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=config['eval_batch_size'], shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=config['eval_batch_size'], shuffle=False, drop_last=True)
 
     # Initialize the model according to the config file
     mlp_classifier = MLP_Classifier(

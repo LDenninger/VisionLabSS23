@@ -60,7 +60,7 @@ def train_model(model: nn.Module,
         losses = run_epoch(model=model, dataset=train_dataset, config=config, criterion=criterion, optimizer=optimizer, device=device, verbose=True)
 
         # Evaluate on validation set.
-        if epoch % EVAL_FREQUENCY == 0:
+        if (epoch+1) % EVAL_FREQUENCY == 0:
             accuracy = run_epoch(model=model, dataset=eval_dataset, config=config, device=device, verbose=VERBOSE)
         if logger is not None:
             
@@ -73,7 +73,16 @@ def train_model(model: nn.Module,
                 model=model,
                 optimizer=optimizer
             )
-
+    accuracy = run_epoch(model=model, dataset=eval_dataset, config=config, device=device, verbose=VERBOSE)
+    if VERBOSE:
+        print(f'-----Training Complete. Final results-----\n')
+        print(f'  Accuracy: {accuracy}')
+    logger.checkpoint(
+        epoch=epoch+1,
+        model=model,
+        optimizer=optimizer,
+        name='checkpoint_final'
+    )
 
 
     
@@ -101,29 +110,32 @@ def run_epoch(model: nn.Module, dataset: torch.utils.data.DataLoader, config: di
         # Prepare inputs
         imgs = imgs.to(device)
         labels = labels.to(device)
-
+        labels_train = labels.clone()
         # Pre processing of the data. TODO: Put into own function.
-        if config['pre_processing']['lbl_oneHote']:
-            labels_ohc = _one_hot_encoding(labels, 10)
+        if config['pre_processing']['lbl_oneHot']:
+            labels_train = _one_hot_encoding(labels, 10)
         if config['pre_processing']['rgb2gray']:
             imgs = _rgb2grayscale(imgs).squeeze()
         if config['pre_processing']['flatten']:
-            imgs = _flatten_img(imgs)
+            imgs = _flatten_img(imgs, only_img_size=True).squeeze()
 
-
-        # reset all gradients
-        if train==True:
-            optimizer.zero_grad()
 
         # Produce output
         outputs = model(imgs)
 
         if train==True:
+
             # Compute loss and backpropagate
-            loss = criterion(outputs, labels_ohc)
-            loss.backward()
+            loss = criterion(outputs, labels_train)
 
             loss_list.append(loss.item())
+
+
+            optimizer.zero_grad()
+
+
+            loss.backward()
+
 
             # Finally update all weights
             optimizer.step()
@@ -135,11 +147,10 @@ def run_epoch(model: nn.Module, dataset: torch.utils.data.DataLoader, config: di
             n_correct += correct_labels
 
 
-        progress_bar.set_description(f'Loss/: {loss.item():.4f}' if train else f'Accuracy: {(n_correct / (i+1)):.4f}')
-
+        progress_bar.set_description(f'Loss/: {loss.item():.4f}' if train else f'Accuracy: {(n_correct / ((i+1)*config["eval_batch_size"])):.4f}')
     if verbose:
         # Additionally returning the loss list after training
-        return loss_list if train else (n_correct / len(dataset))
+        return loss_list if train else (n_correct / (len(dataset)*config["eval_batch_size"]))
 
     return True
 
@@ -151,10 +162,8 @@ def _flatten_img(input: torch.Tensor, only_img_size: bool=True):
     # Flatten only the image size dimensions
 
     if only_img_size:
-        if len(input.shape)==4:
-            return torch.flatten(input, start_dim=2)
-        if len(input.shape)==3:
-            return torch.flatten(input, start_dim=1)
+        return torch.flatten(input, start_dim=-2)
+   
     # Flatten all dimensions except of the batch dimension
     else:
         return torch.flatten(input, start_dim=1)
@@ -191,7 +200,7 @@ def _hsv2rgb(input):
     _o = torch.zeros_like(_c)
     idx = (hsv_h * 6.).type(torch.uint8)
     idx = (idx % 6).expand(-1, 3, -1, -1)
-    rgb = torch.empty_like(hsv)
+    rgb = torch.empty_like(input)
     rgb[idx == 0] = torch.cat([_c, _x, _o], dim=1)[idx == 0]
     rgb[idx == 1] = torch.cat([_x, _c, _o], dim=1)[idx == 1]
     rgb[idx == 2] = torch.cat([_o, _c, _x], dim=1)[idx == 2]
