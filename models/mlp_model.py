@@ -25,6 +25,7 @@ class MLP_Classifier(nn.Module):
             layers.append(nn.Linear(hidden_layers[i-1], hidden_layers[i]))
             layers.append(nn.ReLU())
         layers.append(nn.Linear(hidden_layers[-1], output_dim))
+        layers.append(nn.Softmax(dim=-1))
         self.model = nn.Sequential(*layers)
     
     def forward(self, x):

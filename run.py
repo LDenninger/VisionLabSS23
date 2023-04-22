@@ -20,8 +20,11 @@ def run_task_1_train(run_name: str):
     # Load the configuration
     config = load_config(exp_name, run_name)
 
+    # Set random seed
+    set_random_seed(config['random_seed'])
     # Load the dataset
     train_dataset, test_dataset = load_svhn_dataset()
+
 
     train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=config['eval_batch_size'], shuffle=False)
@@ -47,7 +50,7 @@ def run_task_1_train(run_name: str):
                     run_name=run_name, 
                     configuration=config,
                     verbose=True,
-                    log_gradients=True,
+                    log_gradients=False,
                     log_data = True,
                     checkpoint_frequency=config['save_frequency']
     )
@@ -68,10 +71,11 @@ def run_task_1_train(run_name: str):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-task', type=int, required=True)
+    parser.add_argument('-run', type=str, help="Run name")
     args = parser.parse_args()
 
     if args.task == 0:
         print('Task 0: Testing')
     if args.task == 1:
         print('Task 1: Training')
-        run_task_1_train('test_run')
+        run_task_1_train(args.run)
