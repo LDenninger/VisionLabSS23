@@ -12,6 +12,10 @@ from utils import *
 
 def run_task_1_train(run_name: str):
 
+    # Set device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('Using device:', device)
+
     # Initialize run
     exp_name = 'task_1_svhn_classifier'
     if initiate_run(exp_name=exp_name, run_name=run_name) != 2:
@@ -35,6 +39,7 @@ def run_task_1_train(run_name: str):
                     hidden_layers=config['hidden_layers'],
                     output_dim=config['output_dim']
     )
+    mlp_classifier.to(device)
 
     # Define Criterion for the loss function
     if config['loss'] == 'CrossEntropy':

@@ -51,7 +51,6 @@ def train_model(model: nn.Module,
 
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
 
     # Train the model
     for epoch in range(EPOCHS):
