@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+import os
+
 import argparse
 
 from models import MLP_Classifier
@@ -10,14 +12,13 @@ from experiments import Logger, initiate_run, load_config
 from models import train_model
 from utils import *
 
-def run_task_1_train(run_name: str):
+def run_task_1_train(exp_name: str, run_name: str):
 
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
 
     # Initialize run
-    exp_name = 'task_1_svhn_classifier'
     if initiate_run(exp_name=exp_name, run_name=run_name) != 2:
         print('Run newly initialized. Config file might be faulty if not correctly initialized.') 
         
@@ -78,11 +79,19 @@ def run_task_1_train(run_name: str):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-task', type=int, required=True)
+    parser.add_argument('-exp', type=str, help="Experiment name")
     parser.add_argument('-run', type=str, help="Run name")
     args = parser.parse_args()
+
+    if 'ACTIVATE_EXP' in os.environ:
+        print("Current experiment: " + os.environ['ACTIVATE_EXP'])
+        args.exp = os.environ['ACTIVATE_EXP']
+    if 'ACTIVATE_RUN' in os.environ:
+        print("Current run: " + os.environ['ACTIVATE_RUN'])
+        args.run = os.environ['ACTIVATE_RUN']
 
     if args.task == 0:
         print('Task 0: Testing')
     if args.task == 1:
         print('Task 1: Training')
-        run_task_1_train(args.run)
+        run_task_1_train(args.exp, args.run)
