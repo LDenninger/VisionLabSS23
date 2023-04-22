@@ -40,8 +40,7 @@ def run_task_1_train(run_name: str):
     # Initialize the model according to the config file
     mlp_classifier = MLP_Classifier(
                     input_dim=config['input_dim'],
-                    hidden_layers=config['hidden_layers'],
-                    output_dim=config['output_dim']
+                    mlp_layers=config['layers'],
     )
     mlp_classifier.to(device)
 

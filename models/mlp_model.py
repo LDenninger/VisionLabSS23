@@ -6,15 +6,14 @@ class MLP_Classifier(nn.Module):
 
     def __init__(self,
                     input_dim: int,
-                    hidden_layers: list,
-                    output_dim: int
+                    mlp_layers: list,
                     ):
         """
         Initialization of a multi-layer perceptron.
 
         Parameters:
             input_dim (int): Size of the input.
-            hidden_layers (list): List containing the sizes and types of the hidden layers. Number of elements determines the number of layers.
+            mlp_layers (list): List containing the sizes and types of the mlp layers. Number of elements determines the number of layers.
                 Format: 
                     [
                         {
@@ -36,12 +35,12 @@ class MLP_Classifier(nn.Module):
         """
         
         super(MLP_Classifier, self).__init__()
-        self.build_up_model(input_dim, hidden_layers, output_dim)
+        self.build_up_model(input_dim, mlp_layers)
 
-    def build_up_model(self, input_dim: int, hidden_layers: list):
+    def build_up_model(self, input_dim: int, mlp_layers: list):
         layers = nn.ModuleList()
-        for (i, layer) in enumerate(hidden_layers):
-            layer_inp_dim = input_dim if i == 0 else hidden_layers[i-1]
+        for (i, layer) in enumerate(mlp_layers):
+            layer_inp_dim = input_dim if i == 0 else mlp_layers[i-1]
             # Add a linear layer with a given activation function
             if layer['type'] == 'linear':
                 layers.append(nn.Linear(layer_inp_dim, layer['dimension']))
