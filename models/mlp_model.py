@@ -44,22 +44,23 @@ class MLP_Classifier(nn.Module):
             # Add a linear layer with a given activation function
             if layer['type'] == 'linear':
                 layers.append(nn.Linear(layer_inp_dim, layer['dimension']))
-                if layer['activation'] =='relu':
-                    layers.append(nn.ReLU())
-                if layer['activation'] == 'tanh':
-                    layers.append(nn.Tanh())
-                if layer['activation'] =='sigmoid':
-                    layers.append(nn.Sigmoid())
-                if layer['activation'] == 'elu':
-                    layers.append(nn.ELU())
-                if layer['activation'] =='selu':
-                    layers.append(nn.SELU())
-                if layer['activation'] == 'leaky_relu':
-                    layers.append(nn.LeakyReLU())
-                if layer['activation'] == 'prelu':
-                    layers.append(nn.PReLU())
-                if layer['activation'] == 'softmax':
-                    layers.append(nn.Softmax(dim=-1))
+                if layer['activation'] is not None:
+                    if layer['activation'] =='relu':
+                        layers.append(nn.ReLU())
+                    if layer['activation'] == 'tanh':
+                        layers.append(nn.Tanh())
+                    if layer['activation'] =='sigmoid':
+                        layers.append(nn.Sigmoid())
+                    if layer['activation'] == 'elu':
+                        layers.append(nn.ELU())
+                    if layer['activation'] =='selu':
+                        layers.append(nn.SELU())
+                    if layer['activation'] == 'leaky_relu':
+                        layers.append(nn.LeakyReLU())
+                    if layer['activation'] == 'prelu':
+                        layers.append(nn.PReLU())
+                    if layer['activation'] == 'softmax':
+                        layers.append(nn.Softmax(dim=-1))
             if layer['type'] =='batchnorm':
                 layers.append(nn.BatchNorm1d(layer_inp_dim, layer['eps'], layer['momentum']))
             if layer['type'] == 'dropout':

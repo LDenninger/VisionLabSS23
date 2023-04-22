@@ -21,7 +21,7 @@ def run_task_1_train(exp_name: str, run_name: str):
     # Initialize run
     if initiate_run(exp_name=exp_name, run_name=run_name) != 2:
         print('Run newly initialized. Config file might be faulty if not correctly initialized.') 
-        
+    
     # Load the configuration
     config = load_config(exp_name, run_name)
 
@@ -79,16 +79,19 @@ def run_task_1_train(exp_name: str, run_name: str):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-task', type=int, required=True)
-    parser.add_argument('-exp', type=str, help="Experiment name")
-    parser.add_argument('-run', type=str, help="Run name")
-    args = parser.parse_args()
+    parser.add_argument('-exp', type=str, default=None, help="Experiment name")
+    parser.add_argument('-run', type=str, default=None, help="Run name")
 
-    if 'ACTIVATE_EXP' in os.environ:
+    args = parser.parse_args()
+    if args.exp is None and'ACTIVATE_EXP' in os.environ:
         print("Current experiment: " + os.environ['ACTIVATE_EXP'])
         args.exp = os.environ['ACTIVATE_EXP']
-    if 'ACTIVATE_RUN' in os.environ:
+    if args.run is None and 'ACTIVATE_RUN' in os.environ:
         print("Current run: " + os.environ['ACTIVATE_RUN'])
         args.run = os.environ['ACTIVATE_RUN']
+    
+    if args.exp is None or args.run is None:
+        print('No experiment or run specified.')
 
     if args.task == 0:
         print('Task 0: Testing')
