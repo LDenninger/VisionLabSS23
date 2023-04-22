@@ -57,11 +57,11 @@ def train_model(model: nn.Module,
         print(f'Epoch {epoch + 1}/{EPOCHS}----------')
         accuracy = -1
         # Train for one epoch   
-        losses = run_epoch(model=model, dataset=train_dataset, criterion=criterion, optimizer=optimizer, device=device, verbose=True)
+        losses = run_epoch(model=model, dataset=train_dataset, config=config, criterion=criterion, optimizer=optimizer, device=device, verbose=True)
 
         # Evaluate on validation set.
         if epoch % EVAL_FREQUENCY == 0:
-            accuracy = run_epoch(model=model, dataset=eval_dataset, device=device, verbose=VERBOSE)
+            accuracy = run_epoch(model=model, dataset=eval_dataset, config=config, device=device, verbose=VERBOSE)
         if logger is not None:
             
             logger.step(
@@ -77,7 +77,7 @@ def train_model(model: nn.Module,
 
 
     
-def run_epoch(model: nn.Module, dataset: torch.utils.data.DataLoader, criterion: nn.Module=None, optimizer: torch.optim.Optimizer=None, device: str="cpu", verbose: bool=False):
+def run_epoch(model: nn.Module, dataset: torch.utils.data.DataLoader, config: dict,  criterion: nn.Module=None, optimizer: torch.optim.Optimizer=None, device: str="cpu", verbose: bool=False):
     """
     Run a single epoch of training or evaluation. Providing an optimizer and a criterion is required to train the model, else the model is evaluated on the provided dataset.
     
@@ -102,10 +102,13 @@ def run_epoch(model: nn.Module, dataset: torch.utils.data.DataLoader, criterion:
         imgs = imgs.to(device)
         labels = labels.to(device)
 
-        labels_ohc = _one_hot_encoding(labels, 10)
-
-        imgs = _rgb2grayscale(imgs).squeeze()
-        imgs = _flatten_img(imgs)
+        # Pre processing of the data. TODO: Put into own function.
+        if config['pre_processing']['lbl_oneHote']:
+            labels_ohc = _one_hot_encoding(labels, 10)
+        if config['pre_processing']['rgb2gray']:
+            imgs = _rgb2grayscale(imgs).squeeze()
+        if config['pre_processing']['flatten']:
+            imgs = _flatten_img(imgs)
 
 
         # reset all gradients
