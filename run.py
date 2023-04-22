@@ -50,7 +50,7 @@ def run_task_1_train(run_name: str):
 
     # Define the optimizer
     if config['optimizer']['type'] == 'Adam':
-        optimizer = torch.optim.Adam(mlp_classifier.parameters(), lr=config['optimizer']['learning_rate'], betas=config['optimizer']['betas'], eps=config['optimizer']['eps'])
+        optimizer = torch.optim.Adam(mlp_classifier.parameters(), lr=config['optimizer']['learning_rate'], betas=tuple(config['optimizer']['betas']), eps=config['optimizer']['eps'])
 
     # Initialize the logger
     logger = Logger(
