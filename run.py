@@ -27,7 +27,11 @@ def run_task_1_train(run_name: str):
     # Set random seed
     set_random_seed(config['random_seed'])
     # Load the dataset
-    train_dataset, test_dataset = load_svhn_dataset()
+    if config['dataset'] =='svhn':
+        train_dataset, test_dataset = load_svhn_dataset()
+    
+    elif config['dataset'] == 'mnist':
+        train_dataset, test_dataset = load_mnist_dataset()
 
 
     train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
@@ -46,8 +50,8 @@ def run_task_1_train(run_name: str):
         criterion = nn.CrossEntropyLoss()
 
     # Define the optimizer
-    if config['optimizer'] == 'Adam':
-        optimizer = torch.optim.Adam(mlp_classifier.parameters(), lr=config['learning_rate'])
+    if config['optimizer']['type'] == 'Adam':
+        optimizer = torch.optim.Adam(mlp_classifier.parameters(), lr=config['optimizer']['learning_rate'], betas=config['optimizer']['betas'], eps=config['optimizer']['eps'])
 
     # Initialize the logger
     logger = Logger(
