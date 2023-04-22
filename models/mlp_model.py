@@ -40,7 +40,7 @@ class MLP_Classifier(nn.Module):
     def build_up_model(self, input_dim: int, mlp_layers: list):
         layers = nn.ModuleList()
         for (i, layer) in enumerate(mlp_layers):
-            layer_inp_dim = input_dim if i == 0 else mlp_layers[i-1]
+            layer_inp_dim = input_dim if i == 0 else mlp_layers[i-1]['dimension']
             # Add a linear layer with a given activation function
             if layer['type'] == 'linear':
                 layers.append(nn.Linear(layer_inp_dim, layer['dimension']))

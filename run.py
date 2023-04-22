@@ -43,7 +43,6 @@ def run_task_1_train(run_name: str):
                     mlp_layers=config['layers'],
     )
     mlp_classifier.to(device)
-
     # Define Criterion for the loss function
     if config['loss'] == 'CrossEntropy':
         criterion = nn.CrossEntropyLoss()
