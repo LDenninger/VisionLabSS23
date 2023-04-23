@@ -8,8 +8,7 @@ from .utils import apply_data_preprocessing
 
 def run_evaluation( model: torch.nn.Module, 
                     dataset: torch.utils.data.DataLoader, 
-                    config: dict,
-                    logger: Logger = None):
+                    config: dict):
     """
         Runs evaluation of the given model on the given dataset.
 
@@ -35,24 +34,25 @@ def run_evaluation( model: torch.nn.Module,
         outputs = []
         targets = []
         for i, (imgs, labels) in progress_bar:
+            
+            labels_raw = torch.clone(labels)
+            imgs, labels = imgs.to(device), labels.to(device)
 
-            imgs, targets = imgs.to(device), labels.to(device)
+            imgs, labels = apply_data_preprocessing(imgs, labels, config)
 
-            apply_data_preprocessing(imgs, targets, config['pre_processing'])
+            imgs, labels = imgs.float(), labels.float()
 
-            output = model(imgs)
+            output = model(imgs).float()
 
             outputs.append(output.cpu())
-            targets.append(labels)
+            targets.append(labels_raw.cpu())
         
         for eval_metric in config['evaluation']['metrics']:
             func_name = '_evaluation_' + eval_metric
             try:
-                eval_metrics['eval_metric'] = globals()[func_name]()(torch.stack(outputs, dim=0), torch.stack(targets, dim=0), config)
+                eval_metrics['eval_metric'] = globals()[func_name](torch.stack(outputs, dim=0), torch.stack(targets, dim=0), config)
             except:
                 print(f"NotImplemented: Evaluation metric {eval_metric}")
-        if logger is not None:
-            logger.log()
     return eval_metrics
         
 ### Evaluation Metrics ##

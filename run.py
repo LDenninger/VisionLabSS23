@@ -14,7 +14,6 @@ from utils import *
 
 def run_task_1_train(exp_name: str, run_name: str):
 
-    import ipdb; ipdb.set_trace()
 
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -26,14 +25,17 @@ def run_task_1_train(exp_name: str, run_name: str):
     
     # Load the configuration
     config = load_config(exp_name, run_name)
+    config['num_iterations'] = config['dataset']['train_size'] // config['batch_size'] 
+    config['num_iterations'] += 0 if config['dataset']['drop_last'] else 1
 
     # Set random seed
     set_random_seed(config['random_seed'])
     # Load the dataset
-    if config['dataset'] =='svhn':
+
+    if config['dataset']['name'] =='svhn':
         train_dataset, test_dataset = load_svhn_dataset()
     
-    elif config['dataset'] == 'mnist':
+    elif config['dataset']['name'] == 'mnist':
         train_dataset, test_dataset = load_mnist_dataset()
 
 
@@ -45,7 +47,7 @@ def run_task_1_train(exp_name: str, run_name: str):
     if config['model'] =='mlp':
         mlp_classifier = load_mlp_model(config)
   
-    mlp_classifier.to(device)
+    mlp_classifier = mlp_classifier.to(device)
 
     # Define Criterion for the loss function
     criterion = initialize_loss(config['loss'])
@@ -53,6 +55,7 @@ def run_task_1_train(exp_name: str, run_name: str):
     # Define the optimizer
     optimizer = initialize_optimizer(mlp_classifier, config['optimizer'])
     # Initialize the logger
+
     logger = Logger(
                     exp_name=exp_name, 
                     run_name=run_name, 
@@ -61,6 +64,8 @@ def run_task_1_train(exp_name: str, run_name: str):
                     log_gradients=False,
                     log_data = True,
     )
+
+    logger.init_training()
 
     train_model_01(
                     model=mlp_classifier, 

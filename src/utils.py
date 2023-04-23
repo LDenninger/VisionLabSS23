@@ -64,14 +64,17 @@ def apply_data_preprocessing(images: torch.Tensor, labels: torch.tensor, config:
     images_proc = images.clone()
     labels_proc = labels.clone()
 
-    if config['rgb2gray']:
+    if config['pre_processing']['rgb2gray']:
         images_proc = _rgb2grayscale(images_proc)
 
-    if config['flatten']:
-        images_proc = _flatten_img(images_proc, only_img_size=config['flatten_only_img_size'])
+    if config['pre_processing']['flatten']:
+        images_proc = _flatten_img(images_proc, only_img_size=config['pre_processing']['flatten_only_img_size'])
     
-    if config['lbl_oneHot']:
-        labels_proc = _one_hot_encoding(labels_proc)
+    if config['pre_processing']['lbl_oneHot']:
+        labels_proc = _one_hot_encoding(labels_proc, num_classes=len(config['dataset']['classes']))
+    
+    if config['pre_processing']['squeeze']:
+        images_proc = images_proc.squeeze()
 
     return images_proc, labels_proc
 ## Processing Functions ##    

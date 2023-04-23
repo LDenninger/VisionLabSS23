@@ -55,6 +55,7 @@ def train_model_01(model: nn.Module,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Train the model
+
     for epoch in range(EPOCHS):
         losses = data = eval_metrics = None
 
@@ -65,12 +66,13 @@ def train_model_01(model: nn.Module,
 
         # Evaluate on validation set.
         if (epoch+1) % EVAL_FREQUENCY == 0 and eval_dataset is not None:
-            eval_metrics = run_evaluation(model=model, dataset=eval_dataset, config=config, device=device, logger=logger, verbose=VERBOSE)
+            eval_metrics = run_evaluation(model=model, dataset=eval_dataset, config=config)
 
         if logger is not None:
             logger.step(epoch=epoch)
             data = {**{'train_loss': sum(losses)/len(losses)}, **eval_metrics} if eval_metrics is not None else {'train_loss': sum(losses)/len(losses)}
             logger.log(data=data)
+    import ipdb; ipdb.set_trace()
     if VERBOSE:
         print(f'-----Training Complete. Final results-----\n')
         print(f'  Train Loss: {sum(losses)/len(losses)}')

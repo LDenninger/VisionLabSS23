@@ -36,9 +36,7 @@ def run_train_epoch(    model: nn.Module,
 
     model.train()
     loss_list = []
-    train=True
-
-    if config['verbosity_level'] == 0:
+    if config['verbosity_level'] != 0:
         dataset_iterator = tqdm(enumerate(dataset), total=len(dataset))
     else:
         dataset_iterator = enumerate(dataset)
@@ -48,33 +46,27 @@ def run_train_epoch(    model: nn.Module,
         imgs = imgs.to(device)
         labels = labels.to(device)
 
-        imgs, labels = apply_data_preprocessing(imgs, labels, config['pre_processing'])
+        imgs, labels = apply_data_preprocessing(imgs, labels, config)
+
+        imgs, labels = imgs.float(), labels.float()
 
         # Produce output
-        outputs = model(imgs)
+        outputs = model(imgs).squeeze().float()
 
-        if train==True:
+        # Compute loss and backpropagate
+        loss = criterion(outputs, labels)
 
-            # Compute loss and backpropagate
-            loss = criterion(outputs, labels)
+        loss_list.append(loss.cpu().item())
 
-            loss_list.append(loss.item())
+        optimizer.zero_grad()
 
-            optimizer.zero_grad()
+        loss.backward()
 
-            loss.backward()
-
-            # Finally update all weights
-            optimizer.step()
-
-        else:
-            pred_labels = torch.argmax(outputs, dim=-1)
-
-            correct_labels = len(torch.where(pred_labels == labels)[0])
-            n_correct += correct_labels
+        # Finally update all weights
+        optimizer.step()
 
         if config['verbosity_level'] != 0:
-            dataset_iterator.set_description(f'Loss/: {loss.item():.4f}' if train else f'Accuracy: {(n_correct / ((i+1)*config["eval_batch_size"])):.4f}')
+            dataset_iterator.set_description(f'Loss: {loss.item():.4f}')
 
     return loss_list
 
