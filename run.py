@@ -9,11 +9,12 @@ import argparse
 from models import MLP_Classifier
 from experiments import Logger, initiate_run, load_config
 
-from src import train_model
+from src import train_model_01
 from utils import *
 
 def run_task_1_train(exp_name: str, run_name: str):
 
+    import ipdb: ipdb.set_trace
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
@@ -63,7 +64,7 @@ def run_task_1_train(exp_name: str, run_name: str):
                     checkpoint_frequency=config['save_frequency']
     )
 
-    train_model(
+    train_model_01(
                     model=mlp_classifier, 
                     train_dataset=train_loader, 
                     eval_dataset=test_loader, 
