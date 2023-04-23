@@ -11,8 +11,8 @@ def set_random_seed(seed):
     torch.manual_seed(seed)
 
 def load_svhn_dataset(train_set: bool=True):
-    train_val_data = datasets.SVHN(root='./data', split='train' if train_set else 'extra', transform=transforms.ToTensor(), download=True)
-    test_data = datasets.SVHN(root='./data', split='test', transform=transforms.ToTensor(), download=True)
+    train_val_data = datasets.SVHN(root='./data/svhn', split='train' if train_set else 'extra', transform=transforms.ToTensor(), download=True)
+    test_data = datasets.SVHN(root='./data/svhn', split='test', transform=transforms.ToTensor(), download=True)
     return train_val_data, test_data
 
 def load_mnist_dataset():

@@ -61,7 +61,7 @@ def train_model_01(model: nn.Module,
         print(f'Epoch {epoch + 1}/{EPOCHS}----------')
         accuracy = -1
         # Train for one epoch   
-        losses = run_train_epoch(model=model, dataset=train_dataset, config=config, criterion=criterion, optimizer=optimizer, device=device, verbose=True)
+        losses = run_train_epoch(model=model, dataset=train_dataset, config=config, criterion=criterion, optimizer=optimizer, device=device)
 
         # Evaluate on validation set.
         if (epoch+1) % EVAL_FREQUENCY == 0 and eval_dataset is not None:

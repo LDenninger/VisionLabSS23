@@ -8,7 +8,8 @@ from .utils import apply_data_preprocessing
 
 def run_evaluation( model: torch.nn.Module, 
                     dataset: torch.utils.data.DataLoader, 
-                    config: dict):
+                    config: dict,
+                    logger: Logger = None):
     """
         Runs evaluation of the given model on the given dataset.
 
@@ -50,7 +51,8 @@ def run_evaluation( model: torch.nn.Module,
                 eval_metrics['eval_metric'] = globals()[func_name]()(torch.stack(outputs, dim=0), torch.stack(targets, dim=0), config)
             except:
                 print(f"NotImplemented: Evaluation metric {eval_metric}")
-    
+        if logger is not None:
+            logger.log()
     return eval_metrics
         
 ### Evaluation Metrics ##

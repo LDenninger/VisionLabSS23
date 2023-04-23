@@ -2,9 +2,8 @@ import torch
 import torch.nn as nn
 
 def load_mlp_model(config: dict):
-    model = MLP_Classifier(config['input_dim'], config['mlp_layers'])
+    model = MLP_Classifier(config['input_dim'], config['layers'])
     return model
-
 
 class MLP_Classifier(nn.Module):
 

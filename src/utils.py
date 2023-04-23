@@ -20,7 +20,7 @@ def initialize_optimizer(model: torch.nn.Module, config: dict):
                         }
     """
     if config['type'] == 'Adam':
-        optimizer = torch.optim.Adam(model.parameters(), lr=config['optimizer']['learning_rate'], betas=tuple(config['optimizer']['betas']), eps=config['optimizer']['eps'])
+        optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'], betas=tuple(config['betas']), eps=config['eps'])
         
     return optimizer
 
