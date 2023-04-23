@@ -6,14 +6,15 @@ import os
 
 import argparse
 
-from models import MLP_Classifier
+from models import MLP_Classifier, load_mlp_model
 from experiments import Logger, initiate_run, load_config
 
-from src import train_model_01
+from src import train_model_01, initialize_loss, initialize_optimizer
 from utils import *
-from .utils import *
 
 def run_task_1_train(exp_name: str, run_name: str):
+
+    import ipdb; ipdb.set_trace()
 
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -36,18 +37,18 @@ def run_task_1_train(exp_name: str, run_name: str):
         train_dataset, test_dataset = load_mnist_dataset()
 
 
-    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
-    test_loader = DataLoader(test_dataset, batch_size=config['eval_batch_size'], shuffle=False, drop_last=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=config['dataset']['train_shuffle'], drop_last=config['dataset']['drop_last'])
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['eval_batch_size'], shuffle=config['dataset']['eval_shuffle'], drop_last=config['dataset']['drop_last'])
+
 
     # Initialize the model according to the config file
-    mlp_classifier = MLP_Classifier(
-                    input_dim=config['input_dim'],
-                    mlp_layers=config['layers'],
-    )
+    if config['model'] =='mlp':
+        mlp_classifier = load_mlp_model(config)
+  
     mlp_classifier.to(device)
+
     # Define Criterion for the loss function
-    if config['type'] == 'CrossEntropy':
-        criterion = nn.CrossEntropyLoss()
+    criterion = initialize_loss(config['loss'])
 
     # Define the optimizer
     optimizer = initialize_optimizer(mlp_classifier, config['optimizer'])
@@ -55,11 +56,10 @@ def run_task_1_train(exp_name: str, run_name: str):
     logger = Logger(
                     exp_name=exp_name, 
                     run_name=run_name, 
-                    configuration=config,
+                    model_config=config,
                     verbose=True,
                     log_gradients=False,
                     log_data = True,
-                    checkpoint_frequency=config['save_frequency']
     )
 
     train_model_01(
@@ -69,7 +69,7 @@ def run_task_1_train(exp_name: str, run_name: str):
                     optimizer=optimizer,
                     criterion=criterion,
                     config=config,
-                    logger=logger,
+                    logger=logger
     )
 
 
