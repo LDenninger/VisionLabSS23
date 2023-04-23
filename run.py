@@ -9,7 +9,7 @@ import argparse
 from models import MLP_Classifier
 from experiments import Logger, initiate_run, load_config
 
-from models import train_model
+from src import train_model
 from utils import *
 
 def run_task_1_train(exp_name: str, run_name: str):
@@ -45,7 +45,7 @@ def run_task_1_train(exp_name: str, run_name: str):
     )
     mlp_classifier.to(device)
     # Define Criterion for the loss function
-    if config['loss'] == 'CrossEntropy':
+    if config['type'] == 'CrossEntropy':
         criterion = nn.CrossEntropyLoss()
 
     # Define the optimizer

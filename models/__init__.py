@@ -1,3 +1,3 @@
-from .training import *
+from ..src.training import *
 
-from .mlp_model import MLP_Classifier
+from .mlp_model import MLP_Classifier, load_mlp_model
