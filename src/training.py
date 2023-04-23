@@ -48,7 +48,7 @@ def run_train_epoch(    model: nn.Module,
         imgs = imgs.to(device)
         labels = labels.to(device)
 
-        imgs, labels = apply_data_preprocessing(imgs, labels, config)
+        imgs, labels = apply_data_preprocessing(imgs, labels, config['pre_processing'])
 
         # Produce output
         outputs = model(imgs)
@@ -76,9 +76,6 @@ def run_train_epoch(    model: nn.Module,
         if config['verbosity_level'] != 0:
             dataset_iterator.set_description(f'Loss/: {loss.item():.4f}' if train else f'Accuracy: {(n_correct / ((i+1)*config["eval_batch_size"])):.4f}')
 
-    if config['verbosity_level']!= 0:
-        # Additionally returning the loss list after training
-        return loss_list if train else (n_correct / (len(dataset)*config["eval_batch_size"]))
+    return loss_list
 
-    return True
 

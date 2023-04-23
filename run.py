@@ -11,10 +11,10 @@ from experiments import Logger, initiate_run, load_config
 
 from src import train_model_01
 from utils import *
+from .utils import *
 
 def run_task_1_train(exp_name: str, run_name: str):
 
-    import ipdb: ipdb.set_trace
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
@@ -50,9 +50,7 @@ def run_task_1_train(exp_name: str, run_name: str):
         criterion = nn.CrossEntropyLoss()
 
     # Define the optimizer
-    if config['optimizer']['type'] == 'Adam':
-        optimizer = torch.optim.Adam(mlp_classifier.parameters(), lr=config['optimizer']['learning_rate'], betas=tuple(config['optimizer']['betas']), eps=config['optimizer']['eps'])
-
+    optimizer = initialize_optimizer(mlp_classifier, config['optimizer'])
     # Initialize the logger
     logger = Logger(
                     exp_name=exp_name, 
