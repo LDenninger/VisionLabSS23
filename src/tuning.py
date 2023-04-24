@@ -92,7 +92,7 @@ class HyperOpt():
             print('\n'.join(['   {} : {}'.format(k, v) for k, v in opt_conf.items()]))
 
             study = optuna.create_study(direction='maximize' if opt_conf['maximize'] else 'minimize', 
-                                            sampler = getattr(optuna.samplers, opt_conf['sampler'])(),
+                                             sampler = getattr(optuna.samplers, opt_conf['sampler'])(),
                                                 pruner = getattr(optuna.pruners, opt_conf['pruner'])())
             study.optimize(self.objective, n_trials=opt_conf['n_trials'])
             self._study_internal_save.append(study)
