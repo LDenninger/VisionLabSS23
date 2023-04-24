@@ -31,6 +31,7 @@ def run_evaluation( model: torch.nn.Module,
 
     with torch.no_grad():
         progress_bar = tqdm(enumerate(dataset), total=len(dataset))
+        progress_bar.set_description(f'Evaluation:')
         outputs = []
         targets = []
         for i, (imgs, labels) in progress_bar:
@@ -50,7 +51,7 @@ def run_evaluation( model: torch.nn.Module,
         for eval_metric in config['evaluation']['metrics']:
             func_name = '_evaluation_' + eval_metric
             try:
-                eval_metrics['eval_metric'] = globals()[func_name](torch.stack(outputs, dim=0), torch.stack(targets, dim=0), config)
+                eval_metrics[eval_metric] = globals()[func_name](torch.stack(outputs, dim=0), torch.stack(targets, dim=0), config)
             except:
                 print(f"NotImplemented: Evaluation metric {eval_metric}")
     return eval_metrics

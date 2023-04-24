@@ -1,20 +1,28 @@
 import torch
+import torch.nn as nn
+import torch.utils.data as data_utils
+
+from tqdm import tqdm
 
 import optuna
 
 import os
 import copy
 
+from pathlib import Path as P
+
 from models import *
-from utils import *
-from .execution import *
+from .utils import *
 from .evaluation import *
 from .utils import *
 from experiments import Logger
+from utils import *
 
 class HyperOpt():
 
-    def __init__(self, optimization_config: dict = None, log: bool = False):
+    def __init__(self, model_config: dict = None,
+                         optimization_config: dict = None,
+                            log: bool = False):
         
         """
         Hyperparameter tuner using optuna.
@@ -32,13 +40,22 @@ class HyperOpt():
                                 'n_trials' (int): Number of trials for the optimization of the parameters.
                                 'eval_metric' (str): The evaluation metric to optimize.
                                 'sampler' (str): The sampler to use. Possibble Sampler: ["TPESampler", "RandomSampler", "CmaEsSampler", "PartialFixedSampler", "NSGAIISampler", "MOTPESampler", "QMCSampler", "BruteForceSampler"]
-                                'pruner; (str): The pruner to use. Possibble Pruner: ["MedianPruner
-                                'maximize' (bool): Whether to maximize or minimize the evaluation metric.
+                                'pruner; (str): The pruner to use. Possibble Pruner: ["MedianPruner, NopPruner, PatientPruner,, PercentilePruner, SuccessiveHalvingPruner, HyperbandPruner, ThresholdPruner]
+                                'maximize' (bool): Whether to maximize or minimize the evaluation metric.}
                             ]
         """
         self.log = log
 
+        self.logger = None
+
+        self.train_dataset = None
+        self.eval_dataset = None
+
+        self.config = model_config
         self.optimization_config = [optimization_config] if optimization_config is not None else []
+
+
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def tune_params(self,
                     config: dict
@@ -68,7 +85,6 @@ class HyperOpt():
 
         # Link logger internally for easier data processing
         self._link_logger()
-
         # Run hyperparameter optimization
         for (i, opt_conf) in enumerate(self.optimization_config):
             print(' ---Trial {} of {}---'.format(i+1, len(self.optimization_config)))
@@ -76,8 +92,8 @@ class HyperOpt():
             print('\n'.join(['   {} : {}'.format(k, v) for k, v in opt_conf.items()]))
 
             study = optuna.create_study(direction='maximize' if opt_conf['maximize'] else 'minimize', 
-                                            sampler = optuna.samplers.globals()[opt_conf['sampler']](),
-                                                pruner = optuna.pruners.globals()[opt_conf['pruner']]())
+                                            sampler = getattr(optuna.samplers, opt_conf['sampler'])(),
+                                                pruner = getattr(optuna.pruners, opt_conf['pruner'])())
             study.optimize(self.objective, n_trials=opt_conf['n_trials'])
             self._study_internal_save.append(study)
             # Save the best parameters to the optimized config
@@ -91,12 +107,15 @@ class HyperOpt():
 
         print('-----End Hyperparameter Tuning-----\n')
     
-    def _link_logger(self):
-        print('Logging enabled for Hyperparameter tuning')
-
-        self.logger = Logger(
-            configuration=self.config
-        )
+    def _link_logger(self, logger: Logger = None):
+        if logger is not None and self.logger is None:
+            print('Logging enabled for Hyperparameter tuning')
+            self.logger = logger
+        if self.logger is None:
+            print('Logging enabled for Hyperparameter tuning')
+            self.logger = Logger(
+                model_config=self.config
+            )
             
     def add_trial(self, trial_config: dict):
         """
@@ -105,7 +124,7 @@ class HyperOpt():
             Arguments:
                 trial_config (dict): A dictionary containing the configuration of the trial.
                     Format:
-                            [{  'parameter':  [
+                            {  'parameter':  [
                                                 {
                                                     'param': name of the parameter in the config file,
                                                     'type': parameter type in [categorical, dsicrete_uniform, float, int, loguniform, uniform],
@@ -116,12 +135,12 @@ class HyperOpt():
                                 'eval_metric' (str): The evaluation metric to optimize.
                                 'sampler' (str): The sampler to use. Possibble Sampler: ["TPESampler", "RandomSampler", "CmaEsSampler", "PartialFixedSampler", "NSGAIISampler", "MOTPESampler", "QMCSampler", "BruteForceSampler"]
                                 'pruner; (str): The pruner to use. Possibble Pruner: ["MedianPruner, NopPruner, PatientPruner,, PercentilePruner, SuccessiveHalvingPruner, HyperbandPruner, ThresholdPruner]
-                                'maximize' (bool): Whether to maximize or minimize the evaluation metric.
-                            ]
+                                'maximize' (bool): Whether to maximize or minimize the evaluation metric.}
+                            
         """
-        self.trial_config += trial_config
+        self.optimization_config += trial_config
 
-    def objective(self, trial: optuna.trial.FrozenTrial) -> float:
+    def objective(self, trial):
         """
             Objective function for hyperparameter optimization.
 
@@ -131,10 +150,10 @@ class HyperOpt():
             Returns:
                 float: The objective value of the trial.
         """
-        
         # Set trial from trial config
+        set_random_seed(self.config_optimized['random_seed'])
         params = {}
-        for opt_param in self.trial_config[0]:
+        for opt_param in self.optimization_config[0]['parameter']:
             if opt_param['type'] == 'categorical':
                 params[opt_param['param']] = trial.suggest_categorical(opt_param['param'], opt_param['range'])
             if opt_param['type'] == 'dsicrete_uniform':
@@ -152,12 +171,14 @@ class HyperOpt():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         model, train_loader, eval_loader = self._init_trial(params)
+        
         model = model.to(device)
         optimizer = initialize_optimizer(model, self.config_optimized['optimizer'])
         criterion = initialize_loss(self.config_optimized['loss'])
+
         
         # Force specific evaluation metric for optimization
-        self.config_optimized['evaluation']['metrics'] = self.eval_metric
+        self.config_optimized['evaluation']['metrics'] = [self.optimization_config[0]['eval_metric']]
 
         # Train the model.
         score = self._train_evaluate_model(
@@ -181,33 +202,49 @@ class HyperOpt():
 
     def _init_trial(self, params: dict):
 
+        def set_param(config, key, value):
+            try:
+                if len(key) == 1:
+                    config[key[0]] = value
+                else:
+                    return set_param(config[key[0]], key[1:], value)
+            except:
+                return -1
+
         # Adjust the configuration such that the hyperparameters defined in params overwrite the default values.
         for k, v in params.items():
-            if k in self.config:
-                self.config_optimized[k] = v
-            else:
+            k_split = P(k).parts
+            ret = set_param(self.config_optimized, k_split, v)
+            if ret == -1:
                 print('Caution: Parameter {k} is not in config. Tuning will have no effect.')
 
         model = self._build_model()
+        model = model.to(self.device)
         train_loader, test_loader = self._load_dataset()
 
         return model, train_loader, test_loader
+    
         
     def _build_model(self):
-        if self.config['model'] == 'mlp':
-            self.model = load_mlp_model(self.config)
+        if self.config_optimized['model'] == 'mlp':
+            model = load_mlp_model(self.config_optimized)
+        return model
 
     def _load_dataset(self):
-        if self.config['dataset']['name'] == 'svhn':
-            train_dataset, test_dataset = load_svhn_dataset(train_set=False)
-        if self.config['dataset']['name'] == 'mnist':
-            train_dataset, test_dataset = load_mnist_dataset()
-        
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=self.config['dataset']['train_shuffle'], drop_last=self.config['dataset']['drop_last'])
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['eval_batch_size'], shuffle=self.config['dataset']['eval_shuffle'], drop_last=self.config['dataset']['drop_last'])
 
-        self.config['dataset']['val_size'] = len(train_dataset)
-        self.config['dataset']['test_size'] = len(test_dataset)
+        if self.train_dataset is None or self.test_dataset is None:
+            if self.config_optimized['dataset']['name'] == 'svhn':
+                self.train_dataset, self.test_dataset = load_svhn_dataset(train_set=False)
+            if self.config_optimized['dataset']['name'] == 'mnist':
+                self.train_dataset, self.test_dataset = load_mnist_dataset()
+        if self.config_optimized['dataset']['train_size'] < len(self.train_dataset):
+            self.train_dataset, _ = data_utils.random_split(self.train_dataset, [self.config_optimized['dataset']['train_size'], len(self.train_dataset) - self.config_optimized['dataset']['train_size']])
+        
+        train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.config_optimized['batch_size'], shuffle=self.config_optimized['dataset']['train_shuffle'], drop_last=self.config_optimized['dataset']['drop_last'])
+        test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=self.config_optimized['eval_batch_size'], shuffle=self.config_optimized['dataset']['eval_shuffle'], drop_last=self.config_optimized['dataset']['drop_last'])
+
+        self.config_optimized['dataset']['val_size'] = len(self.train_dataset)
+        self.config_optimized['dataset']['test_size'] = len(self.test_dataset)
 
         return train_loader, test_loader
     
@@ -219,11 +256,11 @@ class HyperOpt():
                                 criterion: nn.Module, ):
         
         def __run_epoch():
-            dataset_iterator = enumerate(train_loader)
+            dataset_iterator = tqdm(enumerate(train_loader), total=len(train_loader))
             for i, (imgs, labels) in dataset_iterator:
                 # Prepare inputs
-                imgs = imgs.to(device)
-                labels = labels.to(device)
+                imgs = imgs.to(self.device)
+                labels = labels.to(self.device)
                 imgs, labels = apply_data_preprocessing(imgs, labels, self.config_optimized)
                 # Produce output
                 output = model(imgs)
@@ -233,18 +270,18 @@ class HyperOpt():
                 loss.backward()
                 # Finally update all weights
                 optimizer.step()
-             
+                dataset_iterator.set_description(f'Loss: {loss.item():.4f}')
+
         EPOCHS = self.config_optimized["num_epochs"]
         ###----Training----###
         # Set device
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # Train the model
         eval_score_epoch = []
         # Iterate for 'num_epochs' epochs
         for epoch in range(EPOCHS):
             losses = data = eval_metrics = None
             __run_epoch()
-            eval_score_epoch.append(run_evaluation(model=model, dataset=test_loader, config=self.config_optimized))
+            eval_score_epoch.append(list(run_evaluation(model=model, dataset=test_loader, config=self.config_optimized).values())[0][0])
             # Pruning
             trial.report(eval_score_epoch[-1], step=epoch)
             if trial.should_prune():
@@ -253,6 +290,6 @@ class HyperOpt():
             
 
     def _get_number_trials(self):
-        return len(self.trial_config)
+        return len(self.optimization_config)
 
         

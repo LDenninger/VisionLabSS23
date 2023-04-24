@@ -7,9 +7,9 @@ import os
 import argparse
 
 from models import MLP_Classifier, load_mlp_model
-from experiments import Logger, initiate_run, load_config
+from experiments import Logger, initiate_run, load_config, load_tuning_config
 
-from src import train_model_01, initialize_loss, initialize_optimizer
+from src import train_model_01, optimize_model_01, initialize_loss, initialize_optimizer
 from utils import *
 
 def run_task_1_train(exp_name: str, run_name: str):
@@ -60,7 +60,7 @@ def run_task_1_train(exp_name: str, run_name: str):
                     exp_name=exp_name, 
                     run_name=run_name, 
                     model_config=config,
-                    verbose=True,
+                    verbose=False,
                     log_gradients=False,
                     log_data = True,
     )
@@ -74,8 +74,38 @@ def run_task_1_train(exp_name: str, run_name: str):
                     optimizer=optimizer,
                     criterion=criterion,
                     config=config,
-                    logger=logger
+                    logger=logger,
+                    verbose=True
     )
+
+    logger.finish()
+
+def run_task_2_tune(exp_name: str, run_name: str):
+
+    # Initialize run
+    if initiate_run(exp_name=exp_name, run_name=run_name) != 2:
+        print('Run newly initialized. Config file might be faulty if not correctly initialized.') 
+    
+    # Load the configuration
+    config = load_config(exp_name, run_name)
+    config['num_iterations'] = config['dataset']['train_size'] // config['batch_size'] 
+    config['num_iterations'] += 0 if config['dataset']['drop_last'] else 1
+
+    # Load the configuration of the tuning process
+    opt_config = load_tuning_config(exp_name, run_name, id=0)
+
+    logger = Logger(
+                    exp_name=exp_name, 
+                    run_name=run_name, 
+                    model_config=config,
+                    verbose=False,
+                    log_gradients=False,
+                    log_data = True,
+    )
+
+    optimize_model_01(config=config, logger=logger, optimization_config=opt_config, verbose=True)
+
+
 
 
 
@@ -102,3 +132,6 @@ if __name__ == '__main__':
     if args.task == 1:
         print('Task 1: Training')
         run_task_1_train(args.exp, args.run)
+    if args.task == 2:
+        print('Task 2: Tuning')
+        run_task_2_tune(args.exp, args.run)
