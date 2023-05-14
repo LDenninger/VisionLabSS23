@@ -165,10 +165,11 @@ cython_debug/
 *.pth
 *.db
 *.tfevents
-*.json
-*.yaml
 
-# Any further evaluation data
+# Any further data
 *.pdf
 *.png
 *.jpeg
+*.jpeg
+*.tar.gz
+*.txt

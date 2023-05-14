@@ -1,14 +1,35 @@
 import argparse
 import os
 
+import torch
+
 import utils
+
+import torchgadgets as tg
 
 
 ###--- Training ---###
 
 def training(exp_name, run_name):
-    print("Training not implemented...")
-    return
+    ##-- Load Config --##
+    load_augm_config_train = utils.load_config('augm_train_preLoad')
+    load_augm_config_test = utils.load_config('augm_test_preLoad')
+    config = utils.load_config_from_run(exp_name, run_name)
+    ##-- Load Dataset --##
+    data = tg.data.load_dataset('oxfordpets')
+    train_dataset = data['train_dataset']
+    test_dataset = data['test_dataset']
+    train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
+    test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, drop_last=True)
+    ##-- Logging --##
+    log_dir = os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs')
+    checkpoint_dir = os.path.join(os.getcwd(), 'experiments', exp_name, run_name, 'checkpoints')
+    logger = tg.logging.Logger(log_dir=log_dir, checkpoint_dir=checkpoint_dir, model_config=config)
+    
+    tg.training.trainNN(config=config, logger=logger, train_loader=train_loader, test_loader=test_loader, return_all=False)
+
 
 
 ###--- Evaluation ---###
