@@ -1,6 +1,6 @@
 [
     {
-        "type": "convert_255_to_1",
+        "type": "toTensor",
         "train": true,
         "eval": true
     },
