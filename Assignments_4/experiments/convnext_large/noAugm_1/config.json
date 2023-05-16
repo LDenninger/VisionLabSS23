@@ -28,7 +28,7 @@
         }
     ],
     "batch_size": 64,
-    "num_epochs": 15,
+    "num_epochs": 10,
     "num_iterations": 62,
     "learning_rate": 3e-05,
     "random_seed": 22,

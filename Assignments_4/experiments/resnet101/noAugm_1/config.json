@@ -10,10 +10,6 @@
             "type": "flatten"
         },
         {
-            "type": "dropout",
-            "prob": 0.3
-        },
-        {
             "type": "linear",
             "in_features": 2048,
             "out_features": 512
@@ -28,7 +24,7 @@
         }
     ],
     "batch_size": 64,
-    "num_epochs": 15,
+    "num_epochs": 10,
     "num_iterations": 62,
     "learning_rate": 3e-05,
     "random_seed": 22,
@@ -42,7 +38,7 @@
         "frequency": 1
     },
     "dataset": {
-        "name": "oxfordpets",
+        "name": "oxfordpet",
         "train_size": 3680,
         "val_size": 0,
         "test_size": 3669,

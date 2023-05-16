@@ -10,10 +10,6 @@
             "type": "flatten"
         },
         {
-            "type": "dropout",
-            "prob": 0.3
-        },
-        {
             "type": "linear",
             "in_features": 768,
             "out_features": 512
@@ -29,12 +25,18 @@
     ],
     "batch_size": 64,
     "num_epochs": 15,
-    "num_iterations": 62,
-    "learning_rate": 3e-05,
+    "num_iterations": 32,
+    "learning_rate": 3e-04,
     "random_seed": 22,
     "save_start": 5,
-    "save_frequency": 2,    
-    "pre_processing": [],
+    "save_frequency": 5,    
+    "pre_processing": [
+        {
+            "type": "normalize",
+            "train": true,
+            "eval": true
+        }
+    ],
     "evaluation": {
         "metrics": [
             "accuracy"
@@ -52,6 +54,7 @@
         "classes": [
             0,
             1,
+            2,
             3,
             4,
             5,
@@ -85,14 +88,13 @@
             33,
             34,
             35,
-            36,
-            37
+            36
         ]
     },
     "scheduler": {
         "epoch_scheduler": {
             "type": "exponential",
-            "gamma": 0.9
+            "gamma": 0.85
         },
         "iteration_scheduler": null
     },

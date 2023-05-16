@@ -10,10 +10,6 @@
             "type": "flatten"
         },
         {
-            "type": "dropout",
-            "prob": 0.3
-        },
-        {
             "type": "linear",
             "in_features": 1024,
             "out_features": 512
@@ -28,13 +24,19 @@
         }
     ],
     "batch_size": 64,
-    "num_epochs": 20,
+    "num_epochs": 15,
     "num_iterations": 62,
     "learning_rate": 3e-05,
     "random_seed": 22,
     "save_start": 5,
     "save_frequency": 2,    
-    "pre_processing": [],
+    "pre_processing": [
+        {
+            "type": "normalize",
+            "train": true,
+            "eval": true
+        }
+    ],
     "evaluation": {
         "metrics": [
             "accuracy"
@@ -52,6 +54,7 @@
         "classes": [
             0,
             1,
+            2,
             3,
             4,
             5,
@@ -85,8 +88,7 @@
             33,
             34,
             35,
-            36,
-            37
+            36
         ]
     },
     "scheduler": {
