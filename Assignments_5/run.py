@@ -22,6 +22,8 @@ import matplotlib.pyplot as plt
 
 import seaborn as sn
 
+from dataset import KTHActioNDataset
+
 
 ###--- Run Information ---###
 # These list of runs can be used to run multiple trainings sequentially.
@@ -29,8 +31,8 @@ import seaborn as sn
 #EXPERIMENT_NAMES = ['convnext_large']*3
 #RUN_NAMES = ['norm_class', 'large_class', 'large_bn_class']
 
-EXPERIMENT_NAMES = ['convnext_large']
-RUN_NAMES = ['final_2']
+EXPERIMENT_NAMES = []
+RUN_NAMES = []
 EVALUATION_METRICS = ['accuracy', 'accuracy_top3', 'accuracy_top5', 'confusion_matrix', 'f1', 'recall', 'precision']
 EPOCHS = [20]
 
@@ -46,25 +48,28 @@ def training(exp_names, run_names):
         ##-- Load Config --##
         # Load the config from the run directory
         # All interactions with the experiments directory should be performed via the utils package
-
-        # Config for augmentation whe nthe dataset is initially loaded, in our case only random cropping
-        load_augm_config_train = utils.load_config('augm_train_preLoad') 
-        load_augm_config_test = utils.load_config('augm_test_preLoad')
-
         # Load config for the model
         config = utils.load_config_from_run(exp_name, run_name)
         config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
 
         tg.tools.set_random_seed(config['random_seed'])
+
         ##-- Load Dataset --##
         # Simply load the dataset using TorchGadgets and define our dataset to apply the initial augmentations
-        data = tg.data.load_dataset('oxfordpet')
-        train_dataset = data['train_dataset']
-        test_dataset = data['test_dataset']
-        train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
-        test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
+        train_dataset = KTHActioNDataset(dataset_name='kth_actions', split='train', transforms=config['pre_processing'])
+        test_dataset = KTHActioNDataset(dataset_name='kth_actions', split='test', transforms=config['pre_processing'])
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, drop_last=True)
+
+        # Since we work with sequential data we apply the data augmentations to the sequences
+        # We only apply a flattening of the labels to only ahve a leading dimension of batch_size*sequence_length
+        config['pre_processing'] = [{
+                "type": "label_flatten",
+                "start_dim": 0,
+                "end_dim": 1,
+                "train": True,
+                "eval": True
+            }]
         ##-- Logging --##
         # Directory of the run that we write our logs to
         log_dir = os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs')
@@ -161,7 +166,7 @@ train = [11, 12, 13, 14, 15, 16, 17, 18]
 validation =[19, 20, 21, 23, 24, 25, 1, 4]
 test = [22, 2, 3, 5, 6, 7, 8, 9, 10]
 
-shared_path = '/home/nfs/inf6/data/dataset/kth_actions'
+shared_path = '/home/nfs/inf6/data/datasets/kth_actions'
 
 ind_to_action = {
     0: 'boxing',
@@ -180,24 +185,33 @@ ind_to_ds_split = {
 
 def prepare_data(dataset_name, val_as_train=False, seq_length=20, overlap=False, dropLast=True, overlap_stride=1):
 
+
     print(f'\n======---- Dataset Preparation ----======\n')
     print(f' Dataset Name: {dataset_name}')
     print(f' Sequence Length: {seq_length}')
     print(f' Overlap: {overlap}')
     print(f' Overlap Stride: {overlap_stride}')
-    print(f' Drop Last: {dropLast}\n')
+    print(f' Drop Last: {dropLast}')
     print(f' Validation as Train: {val_as_train}\n')
 
+    ds_meta = {
+        'name': dataset_name,
+        'val_as_train': val_as_train,
+        'seq_length': seq_length,
+        'overlap': overlap,
+        'overlap_stride': overlap_stride,
+    }
 
     # Paths to save the dataset to
     dataset_path = P(os.getcwd()) / 'data' / dataset_name
     train_path = dataset_path / 'train'
-    val_path = dataset_path / ('val' if not val_as_train else 'train') 
+    val_path = dataset_path / ('validation' if not val_as_train else 'train') 
     test_path = dataset_path / 'test'
 
-    if os.path.exists(str(dataset_path)):
-        print(f'Dataset already exists at {dataset_path}')
-        return False
+
+    #if os.path.exists(str(dataset_path)):
+    #    print(f'Dataset already exists at {dataset_path}')
+    #    return False
     
     try:
         os.makedirs(str(dataset_path))
@@ -207,25 +221,30 @@ def prepare_data(dataset_name, val_as_train=False, seq_length=20, overlap=False,
     except Exception as e:
         print(f'Failed to create the dataset directory at {dataset_path}:')
         print(str(e))
+
+
     
     for ds_split_ind, dataset_split_ids in enumerate([train, validation, test]):
-        print(f'Start to extract the {ind_to_ds_split[ds_split_ind]} dataset from {shared_path}:')
-        print(f'Persons in split: {dataset_split_ids}')
         # Sequence id within the dataset split
         seq_id = 0
         # Capture meta information about the dataset
         meta_info = {}
-        labels = {}
+        labels = []
         for act_ind, action in ind_to_action.items():
             action_path = P(shared_path) / 'processed' / action
             for person_id in dataset_split_ids:
                 for sc_id in range(1,5):
                     # Meta information
+
                     vid_path = action_path / f'person{str(person_id).zfill(2)}_{action}_d{sc_id}'
-                    n_frames = len([entry for entry in os.listdir(vid_path) if os.path.isfile(os.path.join(vid_path, entry))])
+                    if not os.path.exists(str(vid_path)):
+                        print(f'Video missing: person{str(person_id).zfill(2)}_{action}_d{sc_id}\n')
+                        continue
+
+
+                    n_frames = len([entry for entry in os.listdir(str(vid_path)) if os.path.isfile(str(vid_path / entry))])
 
                     # Create the splits that define the sequences
-                    split_starts = np.arange(1, n_frames+1, seq_length+1)
                     # Create overlapping sequences with a stride defined by overlap_stride
                     if overlap:
                         split_starts = np.arange(1, n_frames+1, overlap_stride)
@@ -236,10 +255,12 @@ def prepare_data(dataset_name, val_as_train=False, seq_length=20, overlap=False,
                             split_ends[-(seq_length//overlap_stride):] = n_frames
                     # Create independent sequences
                     else:
+                        split_starts = np.arange(1, n_frames+1, seq_length)
                         split_ends = split_starts[1:] -1
                         split_ends = np.append(split_ends, n_frames+1)
                         # Drop last sequence if the sequence length is shorter than the pre-defined sequence length
                         if dropLast and (split_ends[-1]-split_starts[-1]!= seq_length-1):
+                            split_starts = split_starts[:-1]
                             split_ends = split_ends[:-1]
                     
                     # Load the frames corresponding to the given video
@@ -261,46 +282,42 @@ def prepare_data(dataset_name, val_as_train=False, seq_length=20, overlap=False,
                         try:
                             torch.save(seq_ten, str(save_path))
                         except Exception as e:
-                            print(f'Failed to save sequence {str(save_path)}:')
+                            print(f'Failed to save sequence {str(save_path)}: \n')
                             print(str(e))
                             continue
                         # Log meta information
-                        labels[seq_id] = act_ind
+                        labels.append(act_ind)
                         meta_info[seq_id] ={
-                            'start_id': split_start,
-                            'end_id': split_end,
-                            'label': action,
-                            'label_id': act_ind,
-                            'person_id': person_id,
-                            'scene_id': sc_id
+                            'start_id': str(split_start),
+                            'end_id': str(split_end),
+                            'label': str(action),
+                            'label_id': str(act_ind),
+                            'person_id': str(person_id),
+                            'scene_id': str(sc_id)
 
                         }
+                        print(f'Dataset: {ind_to_ds_split[ds_split_ind]}, \tSeq. Id: \t{str(seq_id)}, \tAction: \t{action}, \tPerson: \t{str(person_id)}, \tVideo: \tperson{str(person_id).zfill(2)}_{action}_d{sc_id}', end='\r')
                         seq_id += 1
+
+        # Save meta information for the dataset split
+        meta_info['length'] = seq_id
+        with open(str(dataset_path / ind_to_ds_split[ds_split_ind] /'meta.json'), 'w') as f:
+            json.dump(meta_info, f, indent=4)
+        # Save the labels for the dataset split
+        labels = torch.Tensor(labels)
+        torch.save(labels, str(dataset_path / ind_to_ds_split[ds_split_ind] /'labels.pt'))
+
+        print(f'Successfully created {ind_to_ds_split[ds_split_ind]} dataset to: {str(dataset_path / ind_to_ds_split[ds_split_ind])}')
+        print(f'Dataset length: {str(seq_id)}')
+
+        ds_meta[f'{ind_to_ds_split[ds_split_ind]}_length'] = str(seq_id)
+        ds_meta[f'{ind_to_ds_split[ds_split_ind]}_pid'] = [str(i) for i in dataset_split_ids]
         
-            # Save meta information for the dataset split
-            with open(str(dataset_path / ind_to_ds_split[ds_split_ind] /'meta.json'), 'w') as f:
-                json.dump(meta_info, f)
-            # Save the labels for the dataset split
-            with open(str(dataset_path / ind_to_ds_split[ds_split_ind] /'labels.json'), 'w') as f:
-                json.dump(labels, f)
+    with open(str(dataset_path / 'dataset_meta.json'), 'w') as f:
+        json.dump(ds_meta, f, indent=4)
 
-            print(f'Successfully created dataset split to: {str(dataset_path / ind_to_ds_split[ds_split_ind])}')
+    print(f'Dataset preperation finished...')
 
-        print(f'Dataset preperation finished...')
-
-
-
-
-                
-
-
-
-
-
-
-def prepare_date(exp_name, run_name):
-        
-    
 
 
 
@@ -315,8 +332,7 @@ if __name__ == '__main__':
     argparser.add_argument('--evaluate', action='store_true', default=False, help='Evaluate the model')
     argparser.add_argument('--tuning', action='store_true', default=False, help='Tune the hyperparameters')
 
-    argparser.add_argument('--augm_study', action='store_true', default=False, help='Run the augmentation study')
-    argparser.add_argument('--opt_study', action='store_true', default=False, help='Run the augmentation study')
+    argparser.add_argument('--prep_data', action='store_true', default=False, help='Prepare the dataset')
 
     argparser.add_argument('--init_exp', action='store_true', default=False, help='Initialize a new experiment')
     argparser.add_argument('--init_run', action='store_true', default=False, help='Initialize a new run')
@@ -329,15 +345,21 @@ if __name__ == '__main__':
     argparser.add_argument('-exp', type=str, default=None, help='Experiment name')
     argparser.add_argument('-run', type=str, default=None, help='Run name')
     argparser.add_argument('-conf', type=str, default=None, help='Config name')
+    argparser.add_argument('-data', type=str, default=None, help='Dataset name')
 
     # Additional parameter
     argparser.add_argument('-n', type=int, default=None)
     
-
     ##-- Function Calls --##
     # Here we simply determien which function to call and how to set the experiment and run name
 
     args = argparser.parse_args()
+
+    if args.prep_data:
+        assert args.data is not None, 'Please provide a dataset name'
+        prepare_data(dataset_name=args.data)
+
+
     # If no experiment or run name is provided, the environment variables defining these have to be set
     if args.init_exp:
         assert (args.exp is not None or 'CURRENT_EXP' in os.environ), 'Please provide an experiment name'
