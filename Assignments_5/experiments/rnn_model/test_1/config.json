@@ -1,0 +1,140 @@
+{
+    "layers": [
+
+        {
+            "type": "flatten",
+            "start_dim": 0,
+            "end_dim": 1
+        },
+        {
+            "type": "ConvNext",
+            "size": "tiny",
+            "remove_layer": 1,
+            "weights": "DEFAULT"
+        },
+        {
+            "type": "reshape",
+            "shape": [
+                4,
+                20,
+                -1
+            ]
+        },
+        {
+            "type": "RNN",
+            "input_size": 768,
+            "hidden_size": 512,
+            "activation": "relu",
+            "num_layers": 4,
+            "bidirectional": false,
+            "dropout": 0,
+            "batch_first": true,
+            "output_id": 0
+
+        },
+        {
+            "type": "linear",
+            "in_features": 512,
+            "out_features": 6
+        }
+    ],
+    "batch_size": 4,
+    "num_epochs": 15,
+    "num_iterations": 62,
+    "num_eval_iterations": 2,
+    "learning_rate": 3e-04,
+    "random_seed": 22,
+    "save_start": 5,
+    "save_frequency": 2,    
+    "pre_processing": 
+        [
+            {
+                "type": "convert_255_to_1",
+                "train": true,
+                "eval": true
+            },
+            {
+                "type": "resize",
+                "size": [
+                    224,
+                    224
+                ],
+                "train": true,
+                "eval": true
+            },
+            {
+                "type": "one_hot_encoding",
+                "num_classes": 6,
+                "train": true,
+                "eval": true
+            },
+            {
+                "type": "label_repeat",
+                "dim": 0,
+                "num": 20,
+                "train": true,
+                "eval": true
+            },
+            
+            {
+                "type": "color_jitter",
+                "brightness": 0.4,
+                "contrast": 0.4,
+                "saturation": 0.3,
+                "hue": 0.0,
+                "train": true,
+                "eval": false
+            },
+            {
+                "type": "gaussian_blur",
+                "kernel_size": [
+                    5,
+                    5
+                ],
+                "sigma": [
+                    0.1,
+                    2.0
+                ],
+                "train": true,
+                "eval": false
+            },
+            {
+                "type": "normalize",
+                "train": true,
+                "eval": true
+            }
+        ],
+    "evaluation": {
+        "metrics": [
+            "accuracy"
+        ],
+        "frequency": 1
+    },
+    "dataset": {
+        "name": "kth_action",
+        "train_size": 4734,
+        "val_size": 4408,
+        "test_size": 5005,
+        "train_shuffle": true,
+        "eval_shuffle": false,
+        "drop_last": true,
+        "classes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+        ]
+    },
+    "scheduler": {
+        "epoch_scheduler": {
+            "type": "exponential",
+            "gamma": 0.9
+        },
+        "iteration_scheduler": null
+    },
+    "optimizer": {
+        "type": "Adam"
+    }
+}
