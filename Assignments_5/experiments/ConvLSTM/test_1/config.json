@@ -41,7 +41,7 @@
         },
         {
             "type": "linear",
-            "in_features": 512,
+            "in_features": 64,
             "out_features": 6
         }
     ],
