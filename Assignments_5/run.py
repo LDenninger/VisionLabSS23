@@ -77,7 +77,7 @@ def training(exp_names, run_names):
 
         # Explicitely define logger to enable TensorBoard logging and setting the log directory
         logger = tg.logging.Logger(log_dir=log_dir, checkpoint_dir=checkpoint_dir, model_config=config, save_internal=True)
-        
+
         tg.training.trainNN(config=config, logger=logger, train_loader=train_loader, test_loader=test_loader, return_all=False)
 
 
@@ -257,7 +257,7 @@ def prepare_data(dataset_name, val_as_train=False, seq_length=20, overlap=False,
                     else:
                         split_starts = np.arange(1, n_frames+1, seq_length)
                         split_ends = split_starts[1:] -1
-                        split_ends = np.append(split_ends, n_frames+1)
+                        split_ends = np.append(split_ends, n_frames)
                         # Drop last sequence if the sequence length is shorter than the pre-defined sequence length
                         if dropLast and (split_ends[-1]-split_starts[-1]!= seq_length-1):
                             split_starts = split_starts[:-1]
@@ -296,7 +296,7 @@ def prepare_data(dataset_name, val_as_train=False, seq_length=20, overlap=False,
                             'scene_id': str(sc_id)
 
                         }
-                        print(f'Dataset: {ind_to_ds_split[ds_split_ind]}, \tSeq. Id: \t{str(seq_id)}, \tAction: \t{action}, \tPerson: \t{str(person_id)}, \tVideo: \tperson{str(person_id).zfill(2)}_{action}_d{sc_id}', end='\r')
+                        print(f'Dataset: {ind_to_ds_split[ds_split_ind]}, \tSeq. Id: {str(seq_id)}, \tAction: {action}, \tPerson: {str(person_id)}, \tVideo: person{str(person_id).zfill(2)}_{action}_d{sc_id}', end='\r')
                         seq_id += 1
 
         # Save meta information for the dataset split
