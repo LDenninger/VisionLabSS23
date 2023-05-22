@@ -19,6 +19,7 @@ class KTHActioNDataset(torch.utils.data.Dataset):
             self.data_augmentor = tg.data.ImageDataAugmentor(transforms)
 
     def __getitem__(self, index):
+
         seq_path = self.data_path / f'sequence_{str(index).zfill(5)}.pt'
         img_seq = torch.load(seq_path)
         label = self.labels[index]

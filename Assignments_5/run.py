@@ -59,7 +59,7 @@ def training(exp_names, run_names):
         train_dataset = KTHActioNDataset(dataset_name='kth_actions', split='train', transforms=config['pre_processing'])
         test_dataset = KTHActioNDataset(dataset_name='kth_actions', split='test', transforms=config['pre_processing'])
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, drop_last=True)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
 
         # Since we work with sequential data we apply the data augmentations to the sequences
         # We only apply a flattening of the labels to only ahve a leading dimension of batch_size*sequence_length
