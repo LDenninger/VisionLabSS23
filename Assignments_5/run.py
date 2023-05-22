@@ -63,13 +63,14 @@ def training(exp_names, run_names):
 
         # Since we work with sequential data we apply the data augmentations to the sequences
         # We only apply a flattening of the labels to only ahve a leading dimension of batch_size*sequence_length
-        config['pre_processing'] = [{
-                "type": "label_flatten",
-                "start_dim": 0,
-                "end_dim": 1,
-                "train": True,
-                "eval": True
-            }]
+        config['pre_processing'] = []
+        #     [{
+        #        "type": "label_flatten",
+        #        "start_dim": 0,
+        #        "end_dim": 1,
+        #        "train": True,
+        #        "eval": True
+        #    }]
         ##-- Logging --##
         # Directory of the run that we write our logs to
         log_dir = os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs')

@@ -11,16 +11,7 @@
             "output_id": 0,
             "layers": [
                 {
-                    "hidden_size": 128,
-                    "kernel_size": [
-                        5,
-                        5
-                    ],
-                    "batchnorm": false,
-                    "stride": 1
-                },
-                {
-                    "hidden_size": 128,
+                    "hidden_size": 64,
                     "kernel_size": [
                         5,
                         5
@@ -40,6 +31,17 @@
             ]
         },
         {
+            "type": "ada_avgpool2d",
+            "output_size": [
+                1,
+                1
+            ]
+        },
+        {
+            "type": "squeeze",
+            "dim": "all"
+        },
+        {
             "type": "linear",
             "in_features": 64,
             "out_features": 6
@@ -48,7 +50,7 @@
     "batch_size": 8,
     "num_epochs": 10,
     "num_iterations": 62,
-    "num_eval_iterations": 100,
+    "num_eval_iterations": 5,
     "learning_rate": 3e-04,
     "random_seed": 22,
     "save_start": 5,
@@ -63,13 +65,6 @@
             {
                 "type": "one_hot_encoding",
                 "num_classes": 6,
-                "train": true,
-                "eval": true
-            },
-            {
-                "type": "label_repeat",
-                "dim": 0,
-                "num": 20,
                 "train": true,
                 "eval": true
             },
