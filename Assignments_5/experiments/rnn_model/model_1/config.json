@@ -8,7 +8,7 @@
         },
         {
             "type": "ConvNext",
-            "size": "tiny",
+            "size": "small",
             "remove_layer": 1,
             "weights": "DEFAULT"
         },
@@ -21,13 +21,14 @@
             ]
         },
         {
-            "type": "LSTM",
+            "type": "RNN",
             "input_size": 768,
             "hidden_size": 512,
-            "num_layers": 1,
+            "activation": "relu",
+            "num_layers": 2,
             "bidirectional": false,
-            "dropout": 0,
             "sequence_out": -1,
+            "dropout": 0,
             "batch_first": true,
             "output_id": 0
 
@@ -39,7 +40,7 @@
         }
     ],
     "batch_size": 8,
-    "num_epochs": 10,
+    "num_epochs": 15,
     "num_iterations": 62,
     "num_eval_iterations": 100,
     "learning_rate": 3e-04,
@@ -68,14 +69,13 @@
                 "train": true,
                 "eval": true
             },
-
             {
                 "type": "color_jitter",
                 "brightness": 0.4,
                 "contrast": 0.4,
                 "saturation": 0.3,
                 "hue": 0.0,
-                "train": false,
+                "train": true,
                 "eval": false
             },
             {
@@ -88,7 +88,7 @@
                     0.1,
                     2.0
                 ],
-                "train": false,
+                "train": true,
                 "eval": false
             },
             {
