@@ -1,0 +1,155 @@
+{
+    "layers": [
+        {
+            "type": "flatten",
+            "start_dim": 0,
+            "end_dim": 1
+        },
+        {
+            "type": "ConvNext",
+            "size": "small",
+            "remove_layer": 2,
+            "weights": "DEFAULT"
+        },
+        {
+            "type": "reshape",
+            "shape": [
+                8,
+                20,
+                768,
+                7,
+                7
+            ]
+        },
+        {
+            "type": "ConvLSTM",
+            "input_size": [
+                768,
+                7,
+                7
+            ],
+            "batch_first": true,
+            "sequence_out": "all",
+            "output_id": 0,
+            "layers": [
+                {
+                    "hidden_size": 128,
+                    "kernel_size": [
+                        5,
+                        5
+                    ],
+                    "batchnorm": false,
+                    "stride": 1
+                }
+            ]
+        },
+        {
+            "type": "ada_avgpool2d",
+            "output_size": [
+                1,
+                1
+            ]
+        },
+        {
+            "type": "squeeze",
+            "dim": "all"
+        },
+        {
+            "type": "linear",
+            "in_features": 128,
+            "out_features": 6
+        }
+    ],
+    "batch_size": 8,
+    "num_epochs": 15,
+    "num_iterations": 62,
+    "num_eval_iterations": 200,
+    "learning_rate": 3e-04,
+    "random_seed": 22,
+    "save_start": 5,
+    "save_frequency": 2,    
+    "pre_processing": 
+        [
+            {
+                "type": "convert_255_to_1",
+                "train": true,
+                "eval": true
+            },
+            {
+                "type": "resize",
+                "size": [
+                    224,
+                    224
+                ],
+                "train": true,
+                "eval": true
+            },
+            {
+                "type": "one_hot_encoding",
+                "num_classes": 6,
+                "train": true,
+                "eval": true
+            },
+            
+            {
+                "type": "color_jitter",
+                "brightness": 0.4,
+                "contrast": 0.4,
+                "saturation": 0.3,
+                "hue": 0.0,
+                "train": true,
+                "eval": false
+            },
+            {
+                "type": "gaussian_blur",
+                "kernel_size": [
+                    5,
+                    5
+                ],
+                "sigma": [
+                    0.1,
+                    2.0
+                ],
+                "train": true,
+                "eval": false
+            },
+            {
+                "type": "normalize",
+                "train": true,
+                "eval": true
+            }
+        ],
+    "evaluation": {
+        "metrics": [
+            "accuracy"
+        ],
+        "frequency": 1
+    },
+    "dataset": {
+        "name": "kth_action",
+        "train_size": 4734,
+        "val_size": 4408,
+        "test_size": 5005,
+        "train_shuffle": true,
+        "eval_shuffle": false,
+        "drop_last": true,
+        "classes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+        ]
+    },
+    "scheduler": {
+        "epoch_scheduler": {
+            "type": "exponential",
+            "gamma": 0.9
+        },
+        "iteration_scheduler": null
+    },
+    "optimizer": {
+        "type": "Adam"
+    }
+}
