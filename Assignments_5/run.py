@@ -31,10 +31,10 @@ from dataset import KTHActioNDataset
 #EXPERIMENT_NAMES = ['convnext_large']*3
 #RUN_NAMES = ['norm_class', 'large_class', 'large_bn_class']
 
-EXPERIMENT_NAMES = []
-RUN_NAMES = []
-EVALUATION_METRICS = ['accuracy', 'accuracy_top3', 'accuracy_top5', 'confusion_matrix', 'f1', 'recall', 'precision']
-EPOCHS = [20]
+EXPERIMENT_NAMES = ['gru_cell', 'lstm_cell']
+RUN_NAMES = ['test_1']*2
+EVALUATION_METRICS = ['accuracy', 'accuracy_top3', 'confusion_matrix', 'f1', 'recall', 'precision']
+EPOCHS = [10, 10]
 
 
 
@@ -106,19 +106,20 @@ def evaluation(exp_names, run_names, verbose=True):
 
     for i, (exp_name, run_name) in enumerate(zip(exp_names, run_names)):
         ##-- Load Config --##
-        load_augm_config_train = utils.load_config('augm_train_preLoad')
-        load_augm_config_test = utils.load_config('augm_test_preLoad')
         config = utils.load_config_from_run(exp_name, run_name)
         config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
+        #config['num_eval_iterations'] = config['dataset']['test_size'] // config['batch_size']
 
         tg.tools.set_random_seed(config['random_seed'])
+
         ##-- Load Dataset --##
-        data = tg.data.load_dataset('oxfordpet')
-        train_dataset = data['train_dataset']
-        test_dataset = data['test_dataset']
-        train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
-        test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, drop_last=True, num_workers=8)
+        # Simply load the dataset using TorchGadgets and define our dataset to apply the initial augmentations
+        train_dataset = KTHActioNDataset(dataset_name='kth_actions', split='train', transforms=config['pre_processing'])
+        test_dataset = KTHActioNDataset(dataset_name='kth_actions', split='test', transforms=config['pre_processing'])
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
+
+        config['pre_processing'] = []
         ##-- Logging --##
         log_dir = os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs')
         checkpoint_dir = os.path.join(os.getcwd(), 'experiments', exp_name, run_name, 'checkpoints')
