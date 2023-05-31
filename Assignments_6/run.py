@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 
 import seaborn as sn
 
+from models import ConvVAE
+
 
 ###--- Run Information ---###
 # These list of runs can be used to run multiple trainings sequentially.
@@ -22,10 +24,10 @@ import seaborn as sn
 #EXPERIMENT_NAMES = ['convnext_large']*3
 #RUN_NAMES = ['norm_class', 'large_class', 'large_bn_class']
 
-EXPERIMENT_NAMES = ['convnext_large']
-RUN_NAMES = ['final_2']
+EXPERIMENT_NAMES = []
+RUN_NAMES = []
 EVALUATION_METRICS = ['accuracy', 'accuracy_top3', 'accuracy_top5', 'confusion_matrix', 'f1', 'recall', 'precision']
-EPOCHS = [20]
+EPOCHS = []
 
 
 
@@ -41,9 +43,8 @@ def training(exp_names, run_names):
         # All interactions with the experiments directory should be performed via the utils package
 
         # Config for augmentation whe nthe dataset is initially loaded, in our case only random cropping
-        load_augm_config_train = utils.load_config('augm_train_preLoad') 
-        load_augm_config_test = utils.load_config('augm_test_preLoad')
-
+        load_augm_config_train = []
+        load_augm_config_test = []
         # Load config for the model
         config = utils.load_config_from_run(exp_name, run_name)
         config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
@@ -51,7 +52,7 @@ def training(exp_names, run_names):
         tg.tools.set_random_seed(config['random_seed'])
         ##-- Load Dataset --##
         # Simply load the dataset using TorchGadgets and define our dataset to apply the initial augmentations
-        data = tg.data.load_dataset('oxfordpet')
+        data = tg.data.load_dataset('food101')
         train_dataset = data['train_dataset']
         test_dataset = data['test_dataset']
         train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
@@ -65,8 +66,10 @@ def training(exp_names, run_names):
 
         # Explicitely define logger to enable TensorBoard logging and setting the log directory
         logger = tg.logging.Logger(log_dir=log_dir, checkpoint_dir=checkpoint_dir, model_config=config, save_internal=True)
-        
-        tg.training.trainNN(config=config, logger=logger, train_loader=train_loader, test_loader=test_loader, return_all=False)
+
+        vae_model = ConvVAE(config, encoder_layers=config['encoder_layers'], decoder_layers=config['decoder_layers'], latent_dim=config['latent_dim'])
+        import ipdb; ipdb.set_trace()
+        tg.training.trainNN(config=config, model=vae_model, logger=logger, train_loader=train_loader, test_loader=test_loader, return_all=False)
 
 
 

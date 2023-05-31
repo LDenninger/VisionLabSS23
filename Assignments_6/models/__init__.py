@@ -1,0 +1,1 @@
+from .ConvVAE import ConvVAE, ConvNeXtVAE
