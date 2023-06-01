@@ -43,8 +43,11 @@ def training(exp_names, run_names):
         # All interactions with the experiments directory should be performed via the utils package
 
         # Config for augmentation whe nthe dataset is initially loaded, in our case only random cropping
-        load_augm_config_train = []
-        load_augm_config_test = []
+        
+        load_augm_config_train = utils.load_config('augm_train_preLoad') 
+        load_augm_config_test = utils.load_config('augm_test_preLoad')
+
+        
         # Load config for the model
         config = utils.load_config_from_run(exp_name, run_name)
         config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
@@ -67,9 +70,10 @@ def training(exp_names, run_names):
         # Explicitely define logger to enable TensorBoard logging and setting the log directory
         logger = tg.logging.Logger(log_dir=log_dir, checkpoint_dir=checkpoint_dir, model_config=config, save_internal=True)
 
-        vae_model = ConvVAE(config, encoder_layers=config['encoder_layers'], decoder_layers=config['decoder_layers'], latent_dim=config['latent_dim'])
-        import ipdb; ipdb.set_trace()
-        tg.training.trainNN(config=config, model=vae_model, logger=logger, train_loader=train_loader, test_loader=test_loader, return_all=False)
+        vae_model = ConvVAE(input_size=(3,224,224), encoder_layers=config['encoder_layers'], decoder_layers=config['decoder_layers'], latent_dim=config['latent_dim'])
+
+        criterion = tg.training.ReconKLDivLoss()
+        tg.training.trainNN(config=config, model=vae_model, logger=logger, criterion=criterion, train_loader=train_loader, test_loader=test_loader, return_all=False)
 
 
 

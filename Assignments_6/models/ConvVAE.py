@@ -33,10 +33,10 @@ class ConvVAE(nn.Module):
         self.fc_sigma = nn.Linear(latent_dim[0], latent_dim[1])
     
     def forward(self, x):
-        z = self.encode(x)
+        z, (mu, sigma) = self.encode(x)
         x_out = self.decode(z)
         x_out = x_out.view(-1, *self.input_size)
-        return x_out
+        return x_out, (z, mu, sigma)
 
     def reparametrize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
@@ -44,14 +44,14 @@ class ConvVAE(nn.Module):
         return eps.mul(std).add_(mu)
     
     def encode(self, x):
-        self.encoder(x)
+        enc = self.encoder(x)
         
-        mu = self.fc_mu(x)
-        sigma = self.fc_sigma(x)
+        mu = self.fc_mu(enc)
+        sigma = self.fc_sigma(enc)
 
         z = self.reparametrize(mu, sigma)
 
-        return z
+        return z, (mu, sigma)
 
     def freeze_encoder(self):
         for param in self.encoder.parameters():

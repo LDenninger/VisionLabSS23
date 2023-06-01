@@ -1,12 +1,13 @@
 {
+    "model": "vae",
     "encoder_layers": [
         {
             "type": "conv2d",
             "in_channels": 3,
             "out_channels": 256,
             "kernel_size": [
-                9,
-                9
+                5,
+                5
             ],
             "stride": [
                 2,
@@ -144,7 +145,8 @@
             "padding": [
                 2,
                 2
-            ]
+            ],
+            "output_padding": 1
         },
         {
             "type": "batchnorm2d",
@@ -170,7 +172,8 @@
             "padding": [
                 2,
                 2
-            ]
+            ],
+            "output_padding": 1
         },
         {
             "type": "batchnorm2d",
@@ -196,7 +199,8 @@
             "padding": [
                 2,
                 2
-            ]
+            ],
+            "output_padding": 1
         },
         {
             "type": "batchnorm2d",
@@ -212,8 +216,8 @@
             "in_channels": 256,
             "out_channels": 3,
             "kernel_size": [
-                9,
-                9
+                5,
+                5
             ],
             "stride": [
                 2,
@@ -222,7 +226,8 @@
             "padding": [
                 2,
                 2
-            ]
+            ],
+            "output_padding": 1
         },
         {
             "type": "sigmoid"
@@ -232,37 +237,16 @@
         3136,
         1000
     ],
-    "batch_size": 8,
-    "num_epochs": 15,
+    "batch_size": 32,
+    "num_epochs": 10,
     "num_iterations": 62,
     "num_eval_iterations": 200,
-    "learning_rate": 3e-04,
+    "learning_rate": 3e-03,
     "random_seed": 22,
-    "save_start": 5,
-    "save_frequency": 2,    
+    "save_start": 1,
+    "save_frequency": 1,    
     "pre_processing": 
         [
-            {
-                "type": "convert_255_to_1",
-                "train": true,
-                "eval": true
-            },
-            {
-                "type": "resize",
-                "size": [
-                    224,
-                    224
-                ],
-                "train": true,
-                "eval": true
-            },
-            {
-                "type": "one_hot_encoding",
-                "num_classes": 6,
-                "train": true,
-                "eval": true
-            },
-            
             {
                 "type": "color_jitter",
                 "brightness": 0.4,
@@ -292,15 +276,14 @@
             }
         ],
     "evaluation": {
-        "metrics": [
-            "accuracy"
-        ],
-        "frequency": 1
+        "metrics": [],
+        "frequency": 20,
+        "target_to_pred": false
     },
     "dataset": {
         "name": "kth_action",
-        "train_size": 4734,
-        "val_size": 4408,
+        "train_size": 75750,
+        "val_size": 25250,
         "test_size": 5005,
         "train_shuffle": true,
         "eval_shuffle": false,
