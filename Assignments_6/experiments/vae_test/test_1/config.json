@@ -237,7 +237,7 @@
         3136,
         1000
     ],
-    "batch_size": 32,
+    "batch_size": 64,
     "num_epochs": 10,
     "num_iterations": 62,
     "num_eval_iterations": 200,

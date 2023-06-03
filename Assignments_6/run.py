@@ -51,7 +51,8 @@ def training(exp_names, run_names):
         # Load config for the model
         config = utils.load_config_from_run(exp_name, run_name)
         config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
-
+        config['num_iterations'] = 500
+        #config['num_iterations'] = 400
         tg.tools.set_random_seed(config['random_seed'])
         ##-- Load Dataset --##
         # Simply load the dataset using TorchGadgets and define our dataset to apply the initial augmentations
@@ -60,8 +61,8 @@ def training(exp_names, run_names):
         test_dataset = data['test_dataset']
         train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
         test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, drop_last=True)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=2)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=2)
         ##-- Logging --##
         # Directory of the run that we write our logs to
         log_dir = os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs')
@@ -72,8 +73,8 @@ def training(exp_names, run_names):
 
         vae_model = ConvVAE(input_size=(3,224,224), encoder_layers=config['encoder_layers'], decoder_layers=config['decoder_layers'], latent_dim=config['latent_dim'])
 
-        criterion = tg.training.ReconKLDivLoss()
-        tg.training.trainNN(config=config, model=vae_model, logger=logger, criterion=criterion, train_loader=train_loader, test_loader=test_loader, return_all=False)
+        criterion = tg.training.ReconKLDivLoss(lambda_kld=0.001)
+        tg.training.trainNN(config=config, model=vae_model, logger=logger, criterion=criterion, train_loader=train_loader, test_loader=test_loader, return_all=False, suppress_output=False)
 
 
 
