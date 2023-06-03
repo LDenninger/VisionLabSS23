@@ -51,7 +51,6 @@ def training(exp_names, run_names):
         # Load config for the model
         config = utils.load_config_from_run(exp_name, run_name)
         config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
-        config['num_iterations'] = 500
         #config['num_iterations'] = 400
         tg.tools.set_random_seed(config['random_seed'])
         ##-- Load Dataset --##
@@ -73,7 +72,7 @@ def training(exp_names, run_names):
 
         vae_model = ConvVAE(input_size=(3,224,224), encoder_layers=config['encoder_layers'], decoder_layers=config['decoder_layers'], latent_dim=config['latent_dim'])
 
-        criterion = tg.training.ReconKLDivLoss(lambda_kld=0.001)
+        criterion = tg.training.ReconKLDivLoss(lambda_kld=0.01)
         tg.training.trainNN(config=config, model=vae_model, logger=logger, criterion=criterion, train_loader=train_loader, test_loader=test_loader, return_all=False, suppress_output=False)
 
 

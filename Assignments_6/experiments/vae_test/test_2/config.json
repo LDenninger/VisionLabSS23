@@ -1,0 +1,444 @@
+{
+    "model": "vae",
+    "encoder_layers": [
+        {
+            "type": "conv2d",
+            "in_channels": 3,
+            "out_channels": 64,
+            "kernel_size": [
+                5,
+                5
+            ],
+            "stride": [
+                1,
+                1
+            ],
+            "padding": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "batchnorm2d",
+            "num_features": 64,
+            "eps": 1e-05,
+            "momentum": 0.1
+        },
+        {
+            "type": "gelu"
+        },
+        {
+            "type": "maxpool2d",
+            "kernel_size": [
+                2,
+                2
+            ],
+            "stride": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "conv2d",
+            "in_channels": 64,
+            "out_channels": 128,
+            "kernel_size": [
+                5,
+                5
+            ],
+            "stride": [
+                1,
+                1
+            ],
+            "padding": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "batchnorm2d",
+            "num_features": 128,
+            "eps": 1e-05,
+            "momentum": 0.1
+        },
+        {
+            "type": "gelu"
+        },
+        {
+            "type": "maxpool2d",
+            "kernel_size": [
+                2,
+                2
+            ],
+            "stride": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "conv2d",
+            "in_channels": 128,
+            "out_channels": 256,
+            "kernel_size": [
+                5,
+                5
+            ],
+            "stride": [
+                1,
+                1
+            ],
+            "padding": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "batchnorm2d",
+            "num_features": 256,
+            "eps": 1e-05,
+            "momentum": 0.1
+        },
+        {
+            "type": "gelu"
+        },
+        {
+            "type": "maxpool2d",
+            "kernel_size": [
+                2,
+                2
+            ],
+            "stride": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "conv2d",
+            "in_channels": 256,
+            "out_channels": 512,
+            "kernel_size": [
+                5,
+                5
+            ],
+            "stride": [
+                1,
+                1
+            ],
+            "padding": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "batchnorm2d",
+            "num_features": 512,
+            "eps": 1e-05,
+            "momentum": 0.1
+        },
+        {
+            "type": "gelu"
+        },
+        {
+            "type": "maxpool2d",
+            "kernel_size": [
+                2,
+                2
+            ],
+            "stride": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "conv2d",
+            "in_channels": 512,
+            "out_channels": 512,
+            "kernel_size": [
+                5,
+                5
+            ],
+            "stride": [
+                1,
+                1
+            ],
+            "padding": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "batchnorm2d",
+            "num_features": 512,
+            "eps": 1e-05,
+            "momentum": 0.1
+        },
+        {
+            "type": "gelu"
+        },
+        {
+            "type": "ada_avgpool2d",
+            "output_size": [
+                1,
+                1
+            ]
+        },
+        {
+            "type": "flatten",
+            "start_dim": 1,
+            "end_dim": -1
+        }
+    ],
+    "decoder_layers": [
+        {
+            "type": "linear",
+            "in_features": 1000,
+            "out_features": 512
+        },
+        {
+            "type": "gelu"
+        },
+        {
+            "type": "unsqueeze",
+            "dim": -1
+        },
+        {
+            "type": "unsqueeze",
+            "dim": -1
+        },
+        {
+            "type": "upsample",
+            "scale": 14
+        },
+        {
+            "type": "reshape",
+            "shape": [
+                -1,
+                512,
+                14,
+                14
+            ]
+        },
+        {
+            "type": "transConv2d",
+            "in_channels": 512,
+            "out_channels": 512,
+            "kernel_size": [
+                5,
+                5
+            ],
+            "stride": [
+                1,
+                1
+            ],
+            "padding": [
+                2,
+                2
+            ],
+            "output_padding": 0
+        },
+        {
+            "type": "batchnorm2d",
+            "num_features": 512,
+            "eps": 1e-05,
+            "momentum": 0.1
+        },
+        {
+            "type": "gelu"
+        },
+        {
+            "type": "upsample",
+            "scale": 2
+
+        },
+        {
+            "type": "transConv2d",
+            "in_channels": 512,
+            "out_channels": 256,
+            "kernel_size": [
+                5,
+                5
+            ],
+            "stride": [
+                1,
+                1
+            ],
+            "padding": [
+                2,
+                2
+            ],
+            "output_padding": 0
+        },
+        {
+            "type": "batchnorm2d",
+            "num_features": 256,
+            "eps": 1e-05,
+            "momentum": 0.1
+        },
+        {
+            "type": "gelu"
+        },
+        {
+            "type": "upsample",
+            "scale": 2
+
+        },
+        {
+            "type": "transConv2d",
+            "in_channels": 256,
+            "out_channels": 128,
+            "kernel_size": [
+                5,
+                5
+            ],
+            "stride": [
+                1,
+                1
+            ],
+            "padding": [
+                2,
+                2
+            ],
+            "output_padding": 0
+        },
+        {
+            "type": "batchnorm2d",
+            "num_features": 128,
+            "eps": 1e-05,
+            "momentum": 0.1
+        },
+        {
+            "type": "gelu"
+        },
+        {
+            "type": "upsample",
+            "scale": 2
+
+        },
+        {
+            "type": "transConv2d",
+            "in_channels": 128,
+            "out_channels": 64,
+            "kernel_size": [
+                5,
+                5
+            ],
+            "stride": [
+                1,
+                1
+            ],
+            "padding": [
+                2,
+                2
+            ],
+            "output_padding": 0
+        },
+        {
+            "type": "batchnorm2d",
+            "num_features": 64,
+            "eps": 1e-05,
+            "momentum": 0.1
+        },
+        {
+            "type": "gelu"
+        },
+        {
+            "type": "upsample",
+            "scale": 2
+        },
+        {
+            "type": "transConv2d",
+            "in_channels": 64,
+            "out_channels": 3,
+            "kernel_size": [
+                5,
+                5
+            ],
+            "stride": [
+                1,
+                1
+            ],
+            "padding": [
+                2,
+                2
+            ],
+            "output_padding": 0
+        },
+        {
+            "type": "sigmoid"
+        }
+    ],
+    "latent_dim": [
+        512,
+        1000
+    ],
+    "batch_size": 64,
+    "num_epochs": 10,
+    "num_iterations": 62,
+    "num_eval_iterations": 200,
+    "learning_rate": 3e-03,
+    "random_seed": 22,
+    "save_start": 1,
+    "save_frequency": 1,    
+    "pre_processing": 
+        [
+            {
+                "type": "color_jitter",
+                "brightness": 0.4,
+                "contrast": 0.4,
+                "saturation": 0.3,
+                "hue": 0.0,
+                "train": true,
+                "eval": false
+            },
+            {
+                "type": "gaussian_blur",
+                "kernel_size": [
+                    5,
+                    5
+                ],
+                "sigma": [
+                    0.1,
+                    2.0
+                ],
+                "train": true,
+                "eval": false
+            },
+            {
+                "type": "normalize",
+                "train": true,
+                "eval": true
+            }
+        ],
+    "evaluation": {
+        "metrics": [],
+        "frequency": 1,
+        "target_to_pred": false
+    },
+    "dataset": {
+        "name": "kth_action",
+        "train_size": 75750,
+        "val_size": 25250,
+        "test_size": 25250,
+        "train_shuffle": true,
+        "eval_shuffle": false,
+        "drop_last": true,
+        "classes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+        ]
+    },
+    "scheduler": {
+        "epoch_scheduler": {
+            "type": "exponential",
+            "gamma": 0.9
+        },
+        "iteration_scheduler": null
+    },
+    "optimizer": {
+        "type": "Adam"
+    }
+}
