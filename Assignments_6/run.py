@@ -60,8 +60,8 @@ def training(exp_names, run_names):
         test_dataset = data['test_dataset']
         train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
         test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=2)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=2)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=1)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=1)
         ##-- Logging --##
         # Directory of the run that we write our logs to
         log_dir = os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs')
