@@ -2,6 +2,9 @@ import argparse
 import os
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchmetrics
 import copy
 import optuna
 
@@ -28,6 +31,48 @@ EXPERIMENT_NAMES = []
 RUN_NAMES = []
 EVALUATION_METRICS = ['accuracy', 'accuracy_top3', 'accuracy_top5', 'confusion_matrix', 'f1', 'recall', 'precision']
 EPOCHS = []
+
+class SSIM_KLD_Loss(nn.Module):
+    """
+        Combined loss function of the MSE reconstruction loss and the KL divergence.
+    
+    """
+
+    def __init__(self, lambda_kld=1e-3, device='cpu'):
+        super(SSIM_KLD_Loss, self).__init__()
+        self.lambda_kld = lambda_kld
+        self.ssim = torchmetrics.StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+        self.device = device
+
+    def forward(self, output, target, mu, log_var):
+        recons_loss = 1-(1+self.ssim(output, target))/2
+        kld = (-0.5 * (1 + log_var - mu**2 - log_var.exp()).sum(dim=1)).mean(dim=0)
+        loss = recons_loss + self.lambda_kld * kld
+
+        return loss, (recons_loss, kld)
+    
+class MSE_KLD_Loss(nn.Module):
+    """
+        Combined loss function of the MSE reconstruction loss and the KL divergence.
+    
+    """
+
+    def __init__(self, lambda_kld=1e-3, device='cpu'):
+        super(SSIM_KLD_Loss, self).__init__()
+        self.lambda_kld = lambda_kld
+        self.device = device
+
+    def forward(self, output, target, mu, log_var):
+        recons_loss = F.mse_loss(
+                output.reshape(target.shape[0], -1),
+                target.reshape(target.shape[0], -1),
+                reduction="none",
+            ).sum(dim=-1).mean(dim=0)
+        kld = (-0.5 * (1 + log_var - mu**2 - log_var.exp()).sum(dim=1)).mean(dim=0)
+        loss = recons_loss + self.lambda_kld * kld
+
+        return loss, (recons_loss, kld)
+
 
 
 
@@ -60,8 +105,8 @@ def training(exp_names, run_names):
         test_dataset = data['test_dataset']
         train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
         test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=1)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=1)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=4)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=4)
         ##-- Logging --##
         # Directory of the run that we write our logs to
         log_dir = os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs')
@@ -69,10 +114,9 @@ def training(exp_names, run_names):
 
         # Explicitely define logger to enable TensorBoard logging and setting the log directory
         logger = tg.logging.Logger(log_dir=log_dir, checkpoint_dir=checkpoint_dir, model_config=config, save_internal=True)
+        vae_model = ConvVAE(config['model'])
 
-        vae_model = ConvVAE(input_size=(3,224,224), encoder_layers=config['encoder_layers'], decoder_layers=config['decoder_layers'], latent_dim=config['latent_dim'])
-
-        criterion = tg.training.ReconKLDivLoss(lambda_kld=0.01)
+        criterion = SSIM_KLD_Loss(lambda_kld=0.002, device='cuda')
         tg.training.trainNN(config=config, model=vae_model, logger=logger, criterion=criterion, train_loader=train_loader, test_loader=test_loader, return_all=False, suppress_output=False)
 
 

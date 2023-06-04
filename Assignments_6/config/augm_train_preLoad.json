@@ -12,8 +12,8 @@
     {
         "type": "resize",
         "size": [
-            224,
-            224
+            64,
+            64
         ],
         "train": true,
         "eval": false
