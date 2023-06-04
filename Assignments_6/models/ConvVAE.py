@@ -38,8 +38,8 @@ class ConvVAE(nn.Module):
 
 
     
-    def forward(self, x):
-        z, (mu, sigma) = self.encode(x)
+    def forward(self, x, y=None):
+        z, (mu, sigma) = self.encode(x, y)
         x_out = self.decode(z)
         x_out = x_out.view(-1, *self.input_size)
         return x_out, (z, mu, sigma)
@@ -50,8 +50,10 @@ class ConvVAE(nn.Module):
         z = mu + std * eps
         return z
     
-    def encode(self, x):
+    def encode(self, x, y=None):
         enc = self.encoder(x)
+        if y is not None:
+            enc = torch.cat([enc, y], dim=-1)
         
         mu = self.fc_mu(enc)
         sigma = self.fc_sigma(enc)
@@ -68,7 +70,9 @@ class ConvVAE(nn.Module):
         for param in self.encoder.parameters():
             param.requires_grad = True
     
-    def decode(self, z):
+    def decode(self, z, y=None):
+        if y is not None:
+            z = torch.cat([z, y], dim=-1)
         return self.decoder(z)
     
     def _build_encoder(self):
