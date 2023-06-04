@@ -31,14 +31,14 @@
         "batch_norm": true,
         "latent_dim": 128
     },
-    "batch_size": 128,
+    "batch_size": 64,
     "num_epochs": 15,
     "num_iterations": 62,
     "num_eval_iterations": 200,
     "learning_rate": 3e-03,
     "random_seed": 22,
     "save_start": 2,
-    "save_frequency": 1,    
+    "save_frequency": 5,    
     "pre_processing": [],
     "evaluation": {
         "metrics": [],
@@ -65,7 +65,7 @@
     "scheduler": {
         "epoch_scheduler": {
             "type": "exponential",
-            "gamma": 0.8
+            "gamma": 0.85
         },
         "iteration_scheduler": null
     },

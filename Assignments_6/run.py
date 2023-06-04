@@ -51,14 +51,14 @@ class SSIM_KLD_Loss(nn.Module):
 
         return loss, (recons_loss, kld)
     
-class MSE_KLD_Loss(nn.Module):
+class MSE_SUM_KLD_Loss(nn.Module):
     """
         Combined loss function of the MSE reconstruction loss and the KL divergence.
     
     """
 
     def __init__(self, lambda_kld=1e-3, device='cpu'):
-        super(SSIM_KLD_Loss, self).__init__()
+        super(MSE_SUM_KLD_Loss, self).__init__()
         self.lambda_kld = lambda_kld
         self.device = device
 
@@ -68,6 +68,27 @@ class MSE_KLD_Loss(nn.Module):
                 target.reshape(target.shape[0], -1),
                 reduction="none",
             ).sum(dim=-1).mean(dim=0)
+        kld = (-0.5 * (1 + log_var - mu**2 - log_var.exp()).sum(dim=1)).mean(dim=0)
+        loss = recons_loss + self.lambda_kld * kld
+
+        return loss, (recons_loss, kld)
+
+class MSE_MEAN_KLD_Loss(nn.Module):
+    """
+        Combined loss function of the MSE reconstruction loss and the KL divergence.
+    
+    """
+
+    def __init__(self, lambda_kld=1e-3, device='cpu'):
+        super(MSE_MEAN_KLD_Loss, self).__init__()
+        self.lambda_kld = lambda_kld
+        self.device = device
+
+    def forward(self, output, target, mu, log_var):
+        recons_loss = F.mse_loss(
+                output.reshape(target.shape[0], -1),
+                target.reshape(target.shape[0], -1),
+            )
         kld = (-0.5 * (1 + log_var - mu**2 - log_var.exp()).sum(dim=1)).mean(dim=0)
         loss = recons_loss + self.lambda_kld * kld
 
@@ -115,8 +136,12 @@ def training(exp_names, run_names):
         # Explicitely define logger to enable TensorBoard logging and setting the log directory
         logger = tg.logging.Logger(log_dir=log_dir, checkpoint_dir=checkpoint_dir, model_config=config, save_internal=True)
         vae_model = ConvVAE(config['model'])
-
-        criterion = SSIM_KLD_Loss(lambda_kld=0.002, device='cuda')
+        if config['loss']['type'] == 'ssim':
+            criterion = SSIM_KLD_Loss(lambda_kld=config['loss']['lambda_kld'], device='cuda')
+        if config['loss']['type'] == 'mse_sum':
+            criterion = MSE_SUM_KLD_Loss(lambda_kld=config['loss']['lambda_kld'])
+        if config['loss']['type'] == 'mse_mean':
+            criterion = MSE_MEAN_KLD_Loss(lambda_kld=config['loss']['lambda_kld'])
         tg.training.trainNN(config=config, model=vae_model, logger=logger, criterion=criterion, train_loader=train_loader, test_loader=test_loader, return_all=False, suppress_output=False)
 
 

@@ -31,6 +31,7 @@ class ConvVAE(nn.Module):
         self.fc_input = model_config['fc_input']
         self.fc_output = model_config['fc_output']
         self.pooling_layers = model_config['pooling_layers']
+        self.bottleneck = model_config['bottleneck']
 
         self._build_encoder()
         self._build_decoder()
@@ -86,9 +87,10 @@ class ConvVAE(nn.Module):
 
         layers.append(nn.Flatten())
         # Bottleneck layer
-        layers.append(nn.Linear(self.fc_input, self.fc_output))
-        layers.append(nn.BatchNorm1d(self.fc_output, momentum=0.9))
-        layers.append(self._get_activation())
+        if self.bottleneck:
+            layers.append(nn.Linear(self.fc_input, self.fc_output))
+            layers.append(nn.BatchNorm1d(self.fc_output, momentum=0.9))
+            layers.append(self._get_activation())
 
         self.fc_mu = nn.Linear(self.fc_output, self.latent_dim)
         self.fc_sigma = nn.Linear(self.fc_output, self.latent_dim)
@@ -102,8 +104,9 @@ class ConvVAE(nn.Module):
         pooling_layers = self.pooling_layers[::-1] 
 
         layers.append(nn.Linear(self.latent_dim, self.fc_input))
-        layers.append(nn.BatchNorm1d(self.fc_input, momentum=0.9))
-        layers.append(self._get_activation())
+        if self.bottleneck:
+            layers.append(nn.BatchNorm1d(self.fc_input, momentum=0.9))
+            layers.append(self._get_activation())
         layers.append(tg.models.Reshape(shape=[-1]+self.conv_output))
         
         for i in range(len(conv_dims)-1):
