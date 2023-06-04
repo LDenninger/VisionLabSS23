@@ -1,0 +1,79 @@
+{
+    "model": {
+        "type": "vae",
+        "input_size": [
+            3,
+            64,
+            64
+        ],
+        "hidden_dim": [
+            32,
+            64,
+            128
+        ],
+        "pooling_layers": [
+            true,
+            true,
+            true
+        ],
+        "kernel_size": [
+            3,
+            3
+        ],
+        "conv_output": [
+            128,
+            8,
+            8
+        ],
+        "fc_input": 8192,
+        "fc_output": 1024,
+        "activation": "gelu",
+        "batch_norm": true,
+        "latent_dim": 128
+    },
+    "batch_size": 128,
+    "num_epochs": 15,
+    "num_iterations": 62,
+    "num_eval_iterations": 200,
+    "learning_rate": 3e-03,
+    "random_seed": 22,
+    "save_start": 2,
+    "save_frequency": 1,    
+    "pre_processing": [],
+    "evaluation": {
+        "metrics": [],
+        "frequency": 1,
+        "target_to_pred": false
+    },
+    "dataset": {
+        "name": "kth_action",
+        "train_size": 75750,
+        "val_size": 25250,
+        "test_size": 25250,
+        "train_shuffle": true,
+        "eval_shuffle": false,
+        "drop_last": true,
+        "classes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+        ]
+    },
+    "scheduler": {
+        "epoch_scheduler": {
+            "type": "exponential",
+            "gamma": 0.8
+        },
+        "iteration_scheduler": null
+    },
+    "optimizer": {
+        "type": "Adam"
+    },
+    "loss": {
+        "type": "mse",
+        "lambda_kld": 1
+    }
+}
