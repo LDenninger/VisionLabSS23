@@ -18,6 +18,7 @@ python setup.py install
 There might be a few more pacakges that have to be manually installed
 
 # Quick Start
+Unpack data to tensor files: `python prepare_data.py`
 Source environment : `source env.sh` <br />
 Set experiment: `setexp [exp. name]`<br />
 Set run: `setrun [run name]`<br />
