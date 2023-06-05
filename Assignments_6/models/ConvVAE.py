@@ -32,6 +32,8 @@ class ConvVAE(nn.Module):
         self.fc_output = model_config['fc_output']
         self.pooling_layers = model_config['pooling_layers']
         self.bottleneck = model_config['bottleneck']
+        self.stride = model_config['stride']
+        self.padding = model_config['padding']
 
         self._build_encoder()
         self._build_decoder()
@@ -40,7 +42,7 @@ class ConvVAE(nn.Module):
     
     def forward(self, x, y=None):
         z, (mu, sigma) = self.encode(x, y)
-        x_out = self.decode(z)
+        x_out = self.decode(z, y)
         x_out = x_out.view(-1, *self.input_size)
         return x_out, (z, mu, sigma)
 
@@ -83,8 +85,8 @@ class ConvVAE(nn.Module):
             layers.append(EncoderBlock(in_channels=conv_dims[i],
                                             out_channels=conv_dims[i+1],
                                                 kernel_size=self.kernel_size,
-                                                    stride=1,
-                                                        padding=self.kernel_size[0]//2,
+                                                    stride=self.stride,
+                                                        padding=self.padding,
                                                             activation=self.activation))
             if self.pooling_layers[i]:
                 layers.append(nn.AvgPool2d(kernel_size=(2,2), stride=(2,2)))
@@ -93,11 +95,13 @@ class ConvVAE(nn.Module):
         # Bottleneck layer
         if self.bottleneck:
             layers.append(nn.Linear(self.fc_input, self.fc_output))
-            layers.append(nn.BatchNorm1d(self.fc_output, momentum=0.9))
+            layers.append(nn.BatchNorm1d(self.fc_output, momentum=0.6))
             layers.append(self._get_activation())
+        
+        latent_input = self.fc_output if self.bottleneck else self.fc_input
 
-        self.fc_mu = nn.Linear(self.fc_output, self.latent_dim)
-        self.fc_sigma = nn.Linear(self.fc_output, self.latent_dim)
+        self.fc_mu = nn.Linear(latent_input, self.latent_dim)
+        self.fc_sigma = nn.Linear(latent_input, self.latent_dim)
 
         self.encoder = nn.Sequential(*layers)
         
@@ -107,9 +111,9 @@ class ConvVAE(nn.Module):
         conv_dims =self.hidden_dim[::-1] + [self.input_size[0]]
         pooling_layers = self.pooling_layers[::-1] 
 
-        layers.append(nn.Linear(self.latent_dim, self.fc_input))
         if self.bottleneck:
-            layers.append(nn.BatchNorm1d(self.fc_input, momentum=0.9))
+            layers.append(nn.Linear(self.latent_dim, self.fc_input))
+            layers.append(nn.BatchNorm1d(self.fc_input, momentum=0.6))
             layers.append(self._get_activation())
         layers.append(tg.models.Reshape(shape=[-1]+self.conv_output))
         
@@ -119,8 +123,8 @@ class ConvVAE(nn.Module):
             layers.append(DecoderBlock(in_channels=conv_dims[i],
                                             out_channels=conv_dims[i+1],
                                                 kernel_size=self.kernel_size,
-                                                    stride=1,
-                                                        padding=self.kernel_size[0]//2,
+                                                    stride=self.stride,
+                                                        padding=self.padding,
                                                             activation=self.activation if i<len(conv_dims)-2 else 'sigmoid'))
             
         self.decoder = nn.Sequential(*layers)

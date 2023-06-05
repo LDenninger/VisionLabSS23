@@ -1,0 +1,86 @@
+{
+    "model": {
+        "type": "vae",
+        "input_size": [
+            3,
+            64,
+            64
+        ],
+        "hidden_dim": [
+            32,
+            64,
+            128,
+            256,
+            512
+        ],
+        "pooling_layers": [
+            true,
+            true,
+            true,
+            true,
+            true
+        ],
+        "kernel_size": [
+            3,
+            3
+        ],
+        "conv_output": [
+            512,
+            2,
+            2
+        ],
+        "stride": 1,
+        "padding": 1,
+        "fc_input": 2048,
+        "fc_output": 512,
+        "activation": "leaky_relu",
+        "batch_norm": true,
+        "latent_dim": 512,
+        "bottleneck": true
+    },
+    "batch_size": 64,
+    "num_epochs": 40,
+    "num_iterations": 62,
+    "num_eval_iterations": 200,
+    "learning_rate": 5e-03,
+    "random_seed": 22,
+    "save_start": 2,
+    "save_frequency": 5,    
+    "pre_processing": [],
+    "evaluation": {
+        "metrics": [],
+        "frequency": 1,
+        "target_to_pred": false
+    },
+    "dataset": {
+        "name": "food101",
+        "train_size": 75750,
+        "val_size": 25250,
+        "test_size": 25250,
+        "train_shuffle": true,
+        "eval_shuffle": false,
+        "drop_last": true,
+        "classes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+        ]
+    },
+    "scheduler": {
+        "epoch_scheduler": {
+            "type": "exponential",
+            "gamma": 0.95
+        },
+        "iteration_scheduler": null
+    },
+    "optimizer": {
+        "type": "Adam"
+    },
+    "loss": {
+        "type": "ssim",
+        "lambda_kld": 0.0005
+    }
+}

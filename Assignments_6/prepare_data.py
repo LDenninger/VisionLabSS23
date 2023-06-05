@@ -21,6 +21,10 @@ if __name__=='__main__':
 
     if not os.path.exists(SAVE_DIR):
         os.makedirs(SAVE_DIR)
+    if not os.path.exists(TRAIN_DIR):
+        os.makedirs(TRAIN_DIR)
+    if not os.path.exists(TEST_DIR):
+        os.makedirs(TEST_DIR)
 
     load_augm_config_train = utils.load_config('augm_train_preLoad') 
     load_augm_config_test = utils.load_config('augm_test_preLoad')
@@ -37,24 +41,25 @@ if __name__=='__main__':
 
     progress_bar = tqdm(enumerate(train_dataset), total=len(train_dataset))
 
-    for i, (img, label) in progress_bar:
+    """for i, (img, label) in progress_bar:
 
         labels.append(label)
-        torch.save(img, str(P(TRAIN_DIR) / f'img_{i}.pt'))
+        torch.save(img, str(P(TRAIN_DIR) / f'img_{str(i).zfill(6)}.pt'))
 
     
     with open(P(TRAIN_DIR) / 'labels.json', 'w') as f:
-        json.dump(labels, f)
+        json.dump(labels, f)"""
 
     ##-- Extract Test Dataset --##
 
+    labels = []
 
-    progress_bar = tqdm(enumerate(train_dataset), total=len(train_dataset))
+    progress_bar = tqdm(enumerate(test_dataset), total=len(test_dataset))
 
-    for i, (img, label) in enumerate(test_dataset):
+    for i, (img, label) in progress_bar:
 
         labels.append(label)
-        torch.save(img, str(P(TEST_DIR) / f'img_{i}.pt'))
+        torch.save(img, str(P(TEST_DIR) / f'img_{str(i).zfill(6)}.pt'))
 
     
     with open(P(TEST_DIR) / 'labels.json', 'w') as f:

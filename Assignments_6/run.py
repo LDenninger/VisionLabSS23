@@ -1,24 +1,20 @@
 import argparse
 import os
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchmetrics
 import copy
 import optuna
-
 import utils
-
 import torchgadgets as tg
-
 from prettytable import PrettyTable
-
 import matplotlib.pyplot as plt
-
 import seaborn as sn
-
 from models import ConvVAE
+from pathlib import Path as P
+import json
+from tqdm import tqdm
 
 
 ###--- Run Information ---###
@@ -31,6 +27,35 @@ EXPERIMENT_NAMES = []
 RUN_NAMES = []
 EVALUATION_METRICS = ['accuracy', 'accuracy_top3', 'accuracy_top5', 'confusion_matrix', 'f1', 'recall', 'precision']
 EPOCHS = []
+
+class Food101Dataset(torch.utils.data.Dataset):
+    """
+        A simple wrapper class for PyTorch datasets to add some further functionalities.
+    
+    """
+    def __init__(self,  transforms: list = None, train_set: bool = True):
+        self.data_augmentor = None
+        self.train_set = train_set
+        if train_set:
+            self.data_dir = P(os.getcwd()) / 'data' / 'food101_processed' / 'train'
+        else:
+            self.data_dir = P(os.getcwd()) / 'data' / 'food101_processed' / 'test'
+
+        with open(str(self.data_dir / 'labels.json'), 'r') as f:
+            self.labels = json.load(f)
+
+        if transforms is not None:
+            self.data_augmentor = tg.data.ImageDataAugmentor(transforms)
+
+    def __getitem__(self, index):
+        image = torch.load(str(self.data_dir / f'img_{str(index).zfill(6)}.pt'))
+        label = self.labels[index]
+        if self.data_augmentor is not None:
+            image, label = self.data_augmentor((image, label), self.train_set)
+        return image, label
+    
+    def __len__(self):
+        return len(self.labels)
 
 class SSIM_KLD_Loss(nn.Module):
     """
@@ -110,22 +135,21 @@ def training(exp_names, run_names):
 
         # Config for augmentation whe nthe dataset is initially loaded, in our case only random cropping
         
-        load_augm_config_train = utils.load_config('augm_train_preLoad') 
-        load_augm_config_test = utils.load_config('augm_test_preLoad')
+        #load_augm_config_train = utils.load_config('augm_train_preLoad') 
+        #load_augm_config_test = utils.load_config('augm_test_preLoad')
 
         
         # Load config for the model
         config = utils.load_config_from_run(exp_name, run_name)
         config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
+        config['num_eval_iterations'] = config['dataset']['test_size'] // config['batch_size']
+
         #config['num_iterations'] = 400
         tg.tools.set_random_seed(config['random_seed'])
         ##-- Load Dataset --##
         # Simply load the dataset using TorchGadgets and define our dataset to apply the initial augmentations
-        data = tg.data.load_dataset('food101')
-        train_dataset = data['train_dataset']
-        test_dataset = data['test_dataset']
-        train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
-        test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
+        train_dataset = Food101Dataset()
+        test_dataset = Food101Dataset(train_set=False)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=4)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=4)
         ##-- Logging --##
@@ -134,232 +158,186 @@ def training(exp_names, run_names):
         checkpoint_dir = os.path.join(os.getcwd(), 'experiments', exp_name, run_name, 'checkpoints')
 
         # Explicitely define logger to enable TensorBoard logging and setting the log directory
-        logger = tg.logging.Logger(log_dir=log_dir, checkpoint_dir=checkpoint_dir, model_config=config, save_internal=True)
-        vae_model = ConvVAE(config['model'])
+        logger = tg.logging.Logger(log_dir=log_dir, checkpoint_dir=checkpoint_dir, model_config=config, save_internal=True, save_external=True)
+        model = ConvVAE(config['model'])
         if config['loss']['type'] == 'ssim':
             criterion = SSIM_KLD_Loss(lambda_kld=config['loss']['lambda_kld'], device='cuda')
         if config['loss']['type'] == 'mse_sum':
             criterion = MSE_SUM_KLD_Loss(lambda_kld=config['loss']['lambda_kld'])
         if config['loss']['type'] == 'mse_mean':
             criterion = MSE_MEAN_KLD_Loss(lambda_kld=config['loss']['lambda_kld'])
-        tg.training.trainNN(config=config, model=vae_model, logger=logger, criterion=criterion, train_loader=train_loader, test_loader=test_loader, return_all=False, suppress_output=False)
+
+        optimizer = tg.training.initialize_optimizer(model, config)
+        scheduler = tg.training.SchedulerManager(optimizer, config)
+
+        data_augmentor = tg.data.ImageDataAugmentor(config=config['pre_processing'])
+
+        if config['model']['type']=='vae':
+            train_vae(config=config, 
+                        model=model, 
+                            logger=logger, 
+                                criterion=criterion, 
+                                    optimizer=optimizer,
+                                        data_augmentor=data_augmentor,
+                                            train_loader=train_loader, 
+                                                val_loader=test_loader, 
+                                                    scheduler=scheduler,
+                                                        suppress_output=False)
 
 
+def train_vae(model, config, train_loader, val_loader, optimizer, criterion,  data_augmentor, scheduler=None, logger=None, suppress_output=False):
+
+    ###--- Hyperparameters ---###
+
+    EPOCHS = config['num_epochs']
+    ITERATIONS = config['num_iterations']
+
+    evaluation_config = config['evaluation']
+
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    ###--- Initial Evaluation ---###
+    # Evaluate the untrained model to have some kind of base line for the training progress
+    print('Initial Evluation')
+    evaluation_metrics, eval_loss, mse, kld = run_vae_evaluation(model,data_augmentor,val_loader,config=config, criterion=criterion, suppress_output=False)
+
+    # Log evaluation data
+    if logger is not None:
+        logger.log_data(epoch=0, data=evaluation_metrics)
+        logger.log_data(epoch=0, data={'eval_loss': eval_loss})
+        logger.log_data(epoch=0, data={'mse': mse})
+        logger.log_data(epoch=0, data={'kld': kld})
+
+    if logger is not None and logger.save_internal:
+        logs = logger.get_last_log()
+        print("".join([(f' {key}: {value},') for key, value in logs.items()]))
+
+
+    ###--- Training ---###
+    # Train for EPOCHES epochs and evaluate the model according to the pre-defined frequency
+    for epoch in range(EPOCHS):
+        print('\nEpoch {}/{}'.format(epoch + 1, EPOCHS))
+        model.train()
+
+        outputs = []
+        targets = []
+        #training_metrics = []
+
+        ###--- Training Epoch ---###
+        if not suppress_output:
+            progress_bar = tqdm(enumerate(train_loader), total=config['num_iterations'])
+        else:
+            progress_bar = enumerate(train_loader)
+        for i, (img, label) in progress_bar:
+            if i==config['num_iterations']:
+                    break
+            img = img.to(DEVICE)
+            label = label.to(DEVICE)
+            # Apply data augmentation and pre-processing
+            img_augm, label_augm = data_augmentor((img, label))
+            # Zero gradients
+            optimizer.zero_grad()
+            # Compute output of the model
+            output, (z, mu, sigma) = model(img_augm)
+            # Compute loss
+            loss, (mse, kld) = criterion(output.float(), img.float(), mu, sigma)
+            # Backward pass to compute the gradients wrt to the loss
+            loss.backward()
+            # Update weights
+            optimizer.step()
+            # Log training data
+            if logger is not None:
+                logger.log_data(data={'train_loss': loss.item(), 'mse': mse.item(), 'kld': kld.item()}, epoch=epoch+1, iteration=i+1, model = model, optimizer = optimizer)
+            #tr_metric = eval_resolve(output, label, config)['accuracy'][0]
+            #raining_metrics.append(tr_metric)
+            if not suppress_output:
+                progress_bar.set_description(f'Loss (recon/kld): {loss.cpu().item():.4f} ({mse.cpu().item():.4f}/{kld.cpu().item():.4f})')
+            if scheduler is not None:
+                # Learning rate scheduler takes a step
+                    scheduler.step(i+1)
+            outputs.append(1.0)
+        ###--- Evaluation Epoch ---###
+        if epoch % evaluation_config['frequency'] == 0:
+            evaluation_metrics, eval_loss, mse, kld = run_vae_evaluation(model,data_augmentor,val_loader,config, criterion=criterion, suppress_output=False)
+
+        # Log evaluation data
+        if logger is not None:
+            #logger.log_data(epoch=epoch+1, data={'train_accuracy': training_metrics})
+            logger.log_data(epoch=epoch+1, data=evaluation_metrics)
+            logger.log_data(epoch=epoch+1, data={'eval_loss': eval_loss})
+            logger.log_data(epoch=epoch+1, data={'eval_mse': mse})
+            logger.log_data(epoch=epoch+1, data={'eval_kld': kld})
+        
+        # If the logger is activated and saves the data internally we can print out the data after each epoch
+        if logger is not None and logger.save_internal:
+            logs = logger.get_last_log()
+            print(", ".join([(f'{key}: {value}') for key, value in logs.items()]))
+        
+
+    
 
 ###--- Evaluation ---###
 # This is the function used for evaluation.
 # The different implementations of the evaluation metrics can be found in the TorchGadgets package
-# The structure of this function is close to the training function.
 
-def evaluation(exp_names, run_names, verbose=True):
-    assert len(exp_names)==len(run_names)
+@torch.no_grad()
+def run_vae_evaluation( model: torch.nn.Module, 
+                    data_augmentor,
+                    dataset: torch.utils.data.DataLoader, 
+                    config: dict,
+                    evaluation_metrics = None,
+                    criterion = None,
+                    suppress_output: bool = False):
+    """
+        Runs evaluation of the given model on the given dataset.
+
+        Arguments:
+            model (torch.nn.Module): The model to evaluate.
+            dataloader (torch.utils.data.DataLoader): The dataloader to evaluate on.
+            config (dict): The configuration dictionary.
+            device (str, optional): The device to evaluate on. Defaults to "cpu".
+
+    """
     
-    # Verbose output
-    if verbose:
-        print(f'\n======---- Evaluation ----======')
-        print(f' Experiment Names: {exp_names}')
-        print(f' Run Names: {run_names}')
-        print(f' Evluation Metrics: {EVALUATION_METRICS}\n')
-        table = PrettyTable()
-        field_names = ['Exp. Name', 'Run Name']
-        for m in EVALUATION_METRICS:
-            if m!='confusion_matrix':
-                field_names.append(m)
-        table.field_names = field_names
-
-    for i, (exp_name, run_name) in enumerate(zip(exp_names, run_names)):
-        ##-- Load Config --##
-        load_augm_config_train = utils.load_config('augm_train_preLoad')
-        load_augm_config_test = utils.load_config('augm_test_preLoad')
-        config = utils.load_config_from_run(exp_name, run_name)
-        config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
-
-        tg.tools.set_random_seed(config['random_seed'])
-        ##-- Load Dataset --##
-        data = tg.data.load_dataset('oxfordpet')
-        train_dataset = data['train_dataset']
-        test_dataset = data['test_dataset']
-        train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
-        test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, drop_last=True, num_workers=8)
-        ##-- Logging --##
-        log_dir = os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs')
-        checkpoint_dir = os.path.join(os.getcwd(), 'experiments', exp_name, run_name, 'checkpoints')
-        vis_dir = os.path.join(os.getcwd(), 'experiments', exp_name, run_name, 'visualizations')
-        logger = tg.logging.Logger(log_dir=log_dir, checkpoint_dir=checkpoint_dir, model_config=config, save_internal=True)
-        data_augmentor = tg.data.ImageDataAugmentor(config['pre_processing'])
-
-        ##-- Model Loading --##
-        # Load the weights from the checkpoint and initialize the model
-        model = tg.models.NeuralNetwork(config['layers'])
-        utils.load_model_from_checkpoint(exp_name, run_name, model, EPOCHS[i])
-
-        ##-- Run Evaluation --##
-        evaluation_result = tg.evaluation.run_evaluation(model, data_augmentor, test_loader, config, evaluation_metrics=EVALUATION_METRICS)
-
-        # Extract data and set a prefix to not confuse the logged data with data logged during the training
-        data = {}
-        for k, v in evaluation_result.items():
-            if k!='confusion_matrix':
-                data[('evaluation/'+k)] = v
-        # Log data
-        logger.log_data(0, data)
-
-        conf_dir = os.path.join(vis_dir, 'confusion_matrix.png')
-        fig, ax = plt.subplots(figsize=(18,16))
-        sn.heatmap(evaluation_result['confusion_matrix'][0], annot=True, linewidths=.5, ax=ax)
-        ax.set_xlabel('Predicted')
-        ax.set_ylabel('True')
-        fig.savefig(conf_dir)
-
-        if verbose:
-            data = [m[0] for k, m in data.items()]
-            data = [exp_name, run_name] + data
-            table.add_row(data)
-    if verbose:
-        print(table)
-        
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    num_iterations = config['num_eval_iterations'] if config['num_eval_iterations'] != -1 else len(dataset)
     
+    # Setup model for evaluation
+    model.eval()
+    model.to(device)
+    eval_metrics = {}
+    if suppress_output:
+        progress_bar = enumerate(dataset)
+    else:
+        progress_bar = tqdm(enumerate(dataset), total=num_iterations)
+        progress_bar.set_description(f'Evaluation:')
+    outputs = []
+    targets = []
+    losses = []
+    mse_list = []
+    kld_list = []
+    for i, (imgs, labels) in progress_bar:
+        if i==num_iterations:
+            break
+        imgs, labels = imgs.to(device), labels.to(device)
+        # apply preprocessing surch as flattening the imgs and create a one hot encodinh of the labels
+        img_augm, labels_augm = data_augmentor((imgs, labels), train=False)
+        output, (z, mu, sigma) = model(img_augm)
+            # Compute loss
+        outputs.append(output.cpu())
+        targets.append(labels.cpu())
+        if criterion is not None:
+            loss, (mse, kld) = criterion(output.float(), imgs.float(), mu, sigma)
+            losses.append(loss.cpu().item())
+            mse_list.append(mse.cpu().item())
+            kld_list.append(kld.cpu().item())
 
+    eval_metrics = tg.evaluation.evaluate(torch.stack(outputs, dim=0), torch.stack(targets, dim=0), config=config, metrics=evaluation_metrics)
 
-
-
-###--- Hyperparameter Tuning ---###
-# These are the functions used for conducting Optuna studies.
-
-LEARNING_RATE_RANGE = (7e-06, 1e-03)
-DECAY_FACTOR_RANGE = (0.6, 1.0)
-BATCH_SIZES = [16,32,64]
-
-##-- Training Parameter Study --##
-# Optimize the learning rate, decay factor and batch size
-
-def optimization_study(exp_name, run_name, study_name, n_trials):
-
-    def objective(trial):
-
-        # Sample training parameter between the boundaries
-        learning_rate = trial.suggest_float('learning_rate', LEARNING_RATE_RANGE[0], LEARNING_RATE_RANGE[1])
-        decay_factor = trial.suggest_float('decay_factor', DECAY_FACTOR_RANGE[0], DECAY_FACTOR_RANGE[1])
-        batch_size = trial.suggest_categorical('batch_size',  BATCH_SIZES)
-        # Copy config
-        config_run = copy.deepcopy(config)
-
-        # Apply sampled training parameters to the config
-        config_run['learning_rate'] = learning_rate
-        config_run['batch_size'] = batch_size
-        config_run['scheduler']['epoch_scheduler']['gamma'] = decay_factor
-        config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
-
-        # Initialize data loaders
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=8)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, drop_last=True, num_workers=8)
-
-        # Run a full training with evaluation while reporting the score to optuna
-        score = tg.training.optimizeNN(config_run, trial, train_loader=train_loader, test_loader=test_loader)
-
-        return score
-
-
-    ##-- Load Config --##
-    load_augm_config_train = utils.load_config('augm_train_preLoad')
-    load_augm_config_test = utils.load_config('augm_test_preLoad')
-    config = utils.load_config_from_run(exp_name, run_name)
-    config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
-    ##-- Load Dataset --##
-    data = tg.data.load_dataset('oxfordpet')
-    train_dataset = data['train_dataset']
-    test_dataset = data['test_dataset']
-    train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
-    test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=8)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, drop_last=True, num_workers=8)
-
-
-    if study_name is None:
-        study_name = 'opt_study'
+    if criterion is None:
+        return eval_metrics
     
-    log_dir = 'sqlite:///' + os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs', study_name+'.db')
+    return eval_metrics, sum(losses) / len(losses), sum(mse_list) / len(mse_list), sum(kld_list) / len(kld_list), 
 
-    study = optuna.create_study(study_name=study_name,
-                                    storage=log_dir, load_if_exists=True,
-                                        direction='maximize',
-                                            sampler = optuna.samplers.TPESampler(), 
-                                                pruner = optuna.pruners.MedianPruner(n_warmup_steps=5))
-    study.optimize(objective, n_trials)
-
-##-- Data Augmentation Study --##
-# This is a further study we did not use at the end.
-# This part can be skipped.
-
-COLOR_JITTER_CONFIG = { "brightness": 0.4, "contrast": 0.4, "saturation": 0.3, "hue": 0.0, "train": True, "eval": False}
-RANDOM_ROTATION_CONFIG =    {"type": "random_rotation", "degrees": 45, "train": True, "eval": False}
-RANDOM_HORIZONTAL_FLIP = {"type": "random_horizontal_flip", "prob": 0.5, "train": True, "eval": False}
-GAUSSIAN_BLUR_CONFIG = {"type": "gaussian_blur", "kernel_size": [5, 5], "sigma": [0.1, 2.0], "train": True, "eval": False}
-NORMALIZE_CONFIG =    {"type": "normalize", "train": True, "eval": True}
-
-
-def data_augmentation_study(exp_name, run_name, study_name=None, n_trials=20):
-
-    def objective(trial):
-        data_augmentation = []
-
-        if trial.suggest_categorical('random_horizontal_flip'):
-            data_augmentation.append(RANDOM_HORIZONTAL_FLIP)
-
-        if trial.suggest_categorical('random_rotation', [True, False]):
-            data_augmentation.append(RANDOM_ROTATION_CONFIG)
-
-        if trial.suggest_categorical('color_jitter', [True, False]):
-            data_augmentation.append(COLOR_JITTER_CONFIG)
-        
-        if trial.suggest_categorical('gaussian_blur', [True, False]):
-            data_augmentation.append(GAUSSIAN_BLUR_CONFIG)
-
-        data_augmentation.append(NORMALIZE_CONFIG)
-
-        config['pre_processing'] = data_augmentation
-
-        score = tg.training.optimizeNN(config, trial, train_loader=train_loader, test_loader=test_loader)
-
-        return score
-
-
-    
-
-    ##-- Load Config --##
-    load_augm_config_train = utils.load_config('augm_train_preLoad')
-    load_augm_config_test = utils.load_config('augm_test_preLoad')
-    config = utils.load_config_from_run(exp_name, run_name)
-    config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
-    ##-- Load Dataset --##
-    data = tg.data.load_dataset('oxfordpet')
-    train_dataset = data['train_dataset']
-    test_dataset = data['test_dataset']
-    train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
-    test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=8)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, drop_last=True, num_workers=8)
-
-
-    if study_name is None:
-        study_name = 'data_augm'
-    
-    log_dir = 'sqlite:///' + os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs', study_name+'.db')
-
-    study = optuna.create_study(study_name=study_name,
-                                    storage=log_dir, load_if_exists=True,
-                                        direction='maximize',
-                                            sampler = optuna.samplers.TPESampler(), 
-                                                pruner = optuna.pruners.MedianPruner())
-    study.optimize(objective, n_trials)
-    
-
-
-
-def hyperparameter_tuning(exp_name, run_name):
-    print("Hyperparameter tuning not implemented...")
-    return
 
 
 
@@ -408,12 +386,6 @@ if __name__ == '__main__':
         run_name = args.run if args.run is not None else os.environ.get('CURRENT_RUN')
         utils.create_run(exp_name, run_name)
     
-    if args.opt_study:
-        assert (args.exp is not None or 'CURRENT_EXP' in os.environ) and (args.run is not None or 'CURRENT_RUN' in os.environ), 'Please provide an experiment and run name'
-        exp_name = args.exp if args.exp is not None else os.environ.get('CURRENT_EXP')
-        run_name = args.run if args.run is not None else os.environ.get('CURRENT_RUN')
-        optimization_study(exp_name, run_name, study_name='opt_study', n_trials=args.n)
-    
     if args.copy_conf:
         assert (args.exp is not None or 'CURRENT_EXP' in os.environ) and (args.run is not None or 'CURRENT_RUN' in os.environ) and args.conf is not None, 'Please provide an experiment and run name and the name of the config file'
         exp_name = args.exp if args.exp is not None else os.environ.get('CURRENT_EXP')
@@ -426,11 +398,6 @@ if __name__ == '__main__':
         run_name = args.run if args.run is not None else os.environ.get('CURRENT_RUN')
         utils.clear_logs(exp_name, run_name)
 
-    if args.tuning:
-        assert (args.exp is not None or 'CURRENT_EXP' in os.environ) and (args.run is not None or 'CURRENT_RUN' in os.environ), 'Please provide an experiment and run name'
-        exp_name = args.exp if args.exp is not None else os.environ.get('CURRENT_EXP')
-        run_name = args.run if args.run is not None else os.environ.get('CURRENT_RUN')
-        hyperparameter_tuning(exp_name, run_name)
 
     if args.train:
         assert ((args.exp is not None or 'CURRENT_EXP' in os.environ) and (args.run is not None or 'CURRENT_RUN' in os.environ)) or (len(EXPERIMENT_NAMES)!=0 and len(RUN_NAMES)!=0), 'Please provide an experiment and run name'
