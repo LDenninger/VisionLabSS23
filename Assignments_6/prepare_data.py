@@ -41,14 +41,14 @@ if __name__=='__main__':
 
     progress_bar = tqdm(enumerate(train_dataset), total=len(train_dataset))
 
-    """for i, (img, label) in progress_bar:
+    for i, (img, label) in progress_bar:
 
         labels.append(label)
         torch.save(img, str(P(TRAIN_DIR) / f'img_{str(i).zfill(6)}.pt'))
 
     
     with open(P(TRAIN_DIR) / 'labels.json', 'w') as f:
-        json.dump(labels, f)"""
+        json.dump(labels, f)
 
     ##-- Extract Test Dataset --##
 
