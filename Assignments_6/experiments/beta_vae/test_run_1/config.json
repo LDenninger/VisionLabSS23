@@ -1,0 +1,58 @@
+{
+    "model": {
+        "type": "resnet_vae",
+        "input_size": [
+            3,
+            64,
+            64
+        ],
+        "latent_dim": 512
+    },
+    "batch_size": 64,
+    "num_epochs": 50,
+    "num_iterations": 62,
+    "num_eval_iterations": 200,
+    "learning_rate": 5e-03,
+    "random_seed": 22,
+    "save_start": 2,
+    "save_frequency": 5,    
+    "pre_processing": [],
+    "evaluation": {
+        "metrics": [],
+        "frequency": 1,
+        "target_to_pred": false
+    },
+    "dataset": {
+        "name": "food101",
+        "train_size": 75750,
+        "val_size": 25250,
+        "test_size": 25250,
+        "train_shuffle": true,
+        "eval_shuffle": false,
+        "drop_last": true,
+        "classes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+        ]
+    },
+    "scheduler": {
+        "epoch_scheduler": {
+            "type": "exponential",
+            "gamma": 0.95
+        },
+        "iteration_scheduler": null
+    },
+    "optimizer": {
+        "type": "Adam"
+    },
+    "loss": {
+        "type": "beta",
+        "lambda_kld": 0.001,
+        "beta": 4
+
+    }
+}

@@ -11,23 +11,27 @@ import torchgadgets as tg
 from prettytable import PrettyTable
 import matplotlib.pyplot as plt
 import seaborn as sn
-from models import ConvVAE
+from models import ConvVAE, get_resnet_vae
 from pathlib import Path as P
 import json
 from tqdm import tqdm
-
+import numpy as np
+import lpips
+from torchmetrics.image.fid import FrechetInceptionDistance
 
 ###--- Run Information ---###
 # These list of runs can be used to run multiple trainings sequentially.
 
-#EXPERIMENT_NAMES = ['convnext_large']*3
-#RUN_NAMES = ['norm_class', 'large_class', 'large_bn_class']
-
-EXPERIMENT_NAMES = []
-RUN_NAMES = []
+EXPERIMENT_NAMES = ['CondVAE', 'resnet_vae']
+RUN_NAMES = ['run_2', 'run_5']
 EVALUATION_METRICS = ['accuracy', 'accuracy_top3', 'accuracy_top5', 'confusion_matrix', 'f1', 'recall', 'precision']
 EPOCHS = []
 
+###--- Food101 Dataset ---###
+# Prior to training we extracted the dataset, resized the images
+# and saved them to PyTorch tensor files.
+# In our experiments, data loading posed a bottleneck which made this step necessary.
+# The script to extract the data can be found in the file 'prepare_data.py'
 class Food101Dataset(torch.utils.data.Dataset):
     """
         A simple wrapper class for PyTorch datasets to add some further functionalities.
@@ -56,12 +60,16 @@ class Food101Dataset(torch.utils.data.Dataset):
     
     def __len__(self):
         return len(self.labels)
-
-class SSIM_KLD_Loss(nn.Module):
-    """
-        Combined loss function of the MSE reconstruction loss and the KL divergence.
     
-    """
+###--- Loss Functions ---###
+
+##-- Structural Similarity Index Measure --##
+
+# The SSIM is a bit more elaborate loss functions which measures the similarity of images
+# based on luminance, contrast and structure.
+# The output  is in the range of [-1,1], where 1 indicates highly similar images.
+# We normalize it to [0,1] and invert it such that 0 indicates similar images.
+class SSIM_KLD_Loss(nn.Module):
 
     def __init__(self, lambda_kld=1e-3, device='cpu'):
         super(SSIM_KLD_Loss, self).__init__()
@@ -70,17 +78,19 @@ class SSIM_KLD_Loss(nn.Module):
         self.device = device
 
     def forward(self, output, target, mu, log_var):
+        # SSIM output [-1,1] --> [0,1]
         recons_loss = 1-(1+self.ssim(output, target))/2
         kld = (-0.5 * (1 + log_var - mu**2 - log_var.exp()).sum(dim=1)).mean(dim=0)
         loss = recons_loss + self.lambda_kld * kld
 
         return loss, (recons_loss, kld)
     
-class MSE_SUM_KLD_Loss(nn.Module):
-    """
-        Combined loss function of the MSE reconstruction loss and the KL divergence.
+##-- MSE Sum Loss --##
+# MSE reconstruction loss with KL divergence regularization term.
+# Here we take the sum within an image and average over a batch.
     
-    """
+class MSE_SUM_KLD_Loss(nn.Module):
+
 
     def __init__(self, lambda_kld=1e-3, device='cpu'):
         super(MSE_SUM_KLD_Loss, self).__init__()
@@ -98,11 +108,11 @@ class MSE_SUM_KLD_Loss(nn.Module):
 
         return loss, (recons_loss, kld)
 
+##-- MSE Mean Loss --##
+# MSE reconstruction loss with KL divergence regularization term.
+# Here we take the average over all errors.
+
 class MSE_MEAN_KLD_Loss(nn.Module):
-    """
-        Combined loss function of the MSE reconstruction loss and the KL divergence.
-    
-    """
 
     def __init__(self, lambda_kld=1e-3, device='cpu'):
         super(MSE_MEAN_KLD_Loss, self).__init__()
@@ -118,9 +128,52 @@ class MSE_MEAN_KLD_Loss(nn.Module):
         loss = recons_loss + self.lambda_kld * kld
 
         return loss, (recons_loss, kld)
+    
+##-- Beta Loss --##
+# Loss functions used for beta-VAEs.
+# It is higly similar to the previous loss except that we have an additional beta term.
+# Beta should we be set > 1 to encourage a disentangled representation in the latent space
+class BetaLoss(nn.Module):
 
 
+    def __init__(self, lambda_kld=1e-3, beta=4):
+        super(BetaLoss, self).__init__()
+        self.lambda_kld = lambda_kld
+        self.beta = beta
 
+    def forward(self, output, target, mu, log_var):
+        recons_loss = F.mse_loss(
+                output.reshape(target.shape[0], -1),
+                target.reshape(target.shape[0], -1),
+            )
+        kld = (-0.5 * (1 + log_var - mu**2 - log_var.exp()).sum(dim=1)).mean(dim=0)
+        loss = recons_loss + self.lambda_kld * self.beta * kld
+
+        return loss, (recons_loss, kld)
+    
+##-- MSE-LPIPS Loss --##
+# Similar to the MSE sum loss with an additional regularization term that evaluates the similarity of the images
+class MSE_MEAN_LPIPS_Loss(nn.Module):
+
+    def __init__(self, lambda_kld=1e-3, lambda_lpips=1e-2, device='cpu'):
+        super(MSE_MEAN_LPIPS_Loss, self).__init__()
+        self.lambda_kld = lambda_kld
+        self.lambda_lpips = lambda_lpips
+        self.lpips_loss = lpips.LPIPS(net='vgg').cuda()
+        self.device = device
+
+    def forward(self, output, target, mu, log_var):
+        recons_loss = F.mse_loss(
+                output.reshape(target.shape[0], -1),
+                target.reshape(target.shape[0], -1),
+            )
+        kld = (-0.5 * (1 + log_var - mu**2 - log_var.exp()).sum(dim=1)).mean(dim=0)
+        output = (output-1)*2
+        target = (target-1)*2
+        lpips_score = torch.mean(self.lpips_loss(output, target))
+
+        loss = recons_loss + self.lambda_kld * kld + self.lambda_lpips * lpips_score
+        return loss, (recons_loss, kld)
 
 ###--- Training ---###
 # This is the function used for training all our experiments.
@@ -135,10 +188,9 @@ def training(exp_names, run_names):
 
         # Config for augmentation whe nthe dataset is initially loaded, in our case only random cropping
         
-        #load_augm_config_train = utils.load_config('augm_train_preLoad') 
+        load_augm_config_train = utils.load_config('augm_train_preLoad') 
         #load_augm_config_test = utils.load_config('augm_test_preLoad')
 
-        
         # Load config for the model
         config = utils.load_config_from_run(exp_name, run_name)
         config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
@@ -148,7 +200,7 @@ def training(exp_names, run_names):
         tg.tools.set_random_seed(config['random_seed'])
         ##-- Load Dataset --##
         # Simply load the dataset using TorchGadgets and define our dataset to apply the initial augmentations
-        train_dataset = Food101Dataset()
+        train_dataset = Food101Dataset(transforms=load_augm_config_train)
         test_dataset = Food101Dataset(train_set=False)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=4)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=4)
@@ -159,20 +211,28 @@ def training(exp_names, run_names):
 
         # Explicitely define logger to enable TensorBoard logging and setting the log directory
         logger = tg.logging.Logger(log_dir=log_dir, checkpoint_dir=checkpoint_dir, model_config=config, save_internal=True, save_external=True)
-        model = ConvVAE(config['model'])
+        if config['model']['type'] in ['vae', 'cond_vae']:
+            model = ConvVAE(config['model'])
+        if config['model']['type'] in 'resnet_vae':
+            model = get_resnet_vae(config['model'])
+
         if config['loss']['type'] == 'ssim':
             criterion = SSIM_KLD_Loss(lambda_kld=config['loss']['lambda_kld'], device='cuda')
         if config['loss']['type'] == 'mse_sum':
             criterion = MSE_SUM_KLD_Loss(lambda_kld=config['loss']['lambda_kld'])
         if config['loss']['type'] == 'mse_mean':
             criterion = MSE_MEAN_KLD_Loss(lambda_kld=config['loss']['lambda_kld'])
+        if config['loss']['type'] == 'beta':
+            criterion = BetaLoss(lambda_kld=config['loss']['lambda_kld'], beta=config['loss']['beta'])
+        if config['loss']['type'] == 'lpips':
+            criterion = MSE_MEAN_LPIPS_Loss(lambda_kld=config['loss']['lambda_kld'], lambda_lpips=config['loss']['lambda_lpips'])
 
         optimizer = tg.training.initialize_optimizer(model, config)
         scheduler = tg.training.SchedulerManager(optimizer, config)
 
         data_augmentor = tg.data.ImageDataAugmentor(config=config['pre_processing'])
 
-        if config['model']['type']=='vae':
+        if config['model']['type'] in ['vae', 'resnet_vae']:
             train_vae(config=config, 
                         model=model, 
                             logger=logger, 
@@ -183,8 +243,11 @@ def training(exp_names, run_names):
                                                 val_loader=test_loader, 
                                                     scheduler=scheduler,
                                                         suppress_output=False)
+        
 
 
+
+##-- VAE Training Script --##
 def train_vae(model, config, train_loader, val_loader, optimizer, criterion,  data_augmentor, scheduler=None, logger=None, suppress_output=False):
 
     ###--- Hyperparameters ---###
@@ -237,7 +300,11 @@ def train_vae(model, config, train_loader, val_loader, optimizer, criterion,  da
             # Zero gradients
             optimizer.zero_grad()
             # Compute output of the model
-            output, (z, mu, sigma) = model(img_augm)
+            if config['model']['conditional']:
+                output, (z, mu, sigma) = model(img_augm, label_augm)
+            else:
+                output, (z, mu, sigma) = model(img_augm)
+
             # Compute loss
             loss, (mse, kld) = criterion(output.float(), img.float(), mu, sigma)
             # Backward pass to compute the gradients wrt to the loss
@@ -321,7 +388,10 @@ def run_vae_evaluation( model: torch.nn.Module,
         imgs, labels = imgs.to(device), labels.to(device)
         # apply preprocessing surch as flattening the imgs and create a one hot encodinh of the labels
         img_augm, labels_augm = data_augmentor((imgs, labels), train=False)
-        output, (z, mu, sigma) = model(img_augm)
+        if config['model']['conditional']:
+            output, (z, mu, sigma) = model(img_augm, labels_augm)
+        else:
+            output, (z, mu, sigma) = model(img_augm)
             # Compute loss
         outputs.append(output.cpu())
         targets.append(labels.cpu())
@@ -339,8 +409,56 @@ def run_vae_evaluation( model: torch.nn.Module,
     return eval_metrics, sum(losses) / len(losses), sum(mse_list) / len(mse_list), sum(kld_list) / len(kld_list), 
 
 
+@torch.no_grad()
+def compute_frechet_inception_score(exp_name, run_name, data_augmentor, model=None, dataset=None, conditional=False):
+
+    ##-- Hyperparameters for Evaluation --##
+    dim = 2048
+    feature = 64
+    device = ('cuda' if torch.cuda.is_available() else 'cpu')
 
 
+    # Load config for the model
+    config = utils.load_config_from_run(exp_name, run_name)
+    config['num_iterations'] = config['dataset']['train_size'] // config['batch_size']
+    config['num_eval_iterations'] = config['dataset']['test_size'] // config['batch_size']
+
+    # Load the model
+    if model is None:
+        if config['model']['type'] in ['vae', 'cond_vae']:
+            model = ConvVAE(config['model'])
+        if config['model']['type'] == 'resnet_vae':
+            model = get_resnet_vae(config['model'])
+
+    model = model.to(device)
+    model.eval()
+    # Load the dataset
+    if dataset is None:
+        test_dataset = Food101Dataset(train_set=False)
+        dataset = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=4)
+
+    # Initialize FID metric
+    fid = FrechetInceptionDistance(feature=feature, dim=dim).to(device)
+
+    progress_bar = tqdm(enumerate(dataset), total=len(dataset))
+
+    score = []
+    for i, (img, label) in progress_bar:
+        img = img.to(device)
+        label = label.to(device)
+
+        img_augm, label_augm = data_augmentor((img, label))
+        if conditional:
+            label = F.one_hot(label, 101)
+            pred, (y, mu, logvar) = model(img_augm, label)
+        else:
+            pred, (y, mu, logvar) = model(img_augm)
+
+        fid.update(torch.round(255*img).to(dtype=torch.uint8), real=True)
+        fid.update(torch.round(255*pred).to(dtype=torch.uint8), real=False)
+        score.append(fid.compute().cpu().item())
+
+    return np.mean(score)
 
 if __name__ == '__main__':
 

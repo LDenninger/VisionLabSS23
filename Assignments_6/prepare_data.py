@@ -12,9 +12,10 @@ from tqdm import tqdm
 
 if __name__=='__main__':
 
+    # Data directory as defined by the PyTorch dataset
     DATA_DIR = P(os.getcwd()) / 'data' / 'food101'
 
-
+    # Create new directory for the processed data
     SAVE_DIR = P(os.getcwd()) / 'data' / 'food101_processed'
     TRAIN_DIR = P(os.getcwd()) / 'data' / 'food101_processed' / 'train'
     TEST_DIR = P(os.getcwd()) / 'data' / 'food101_processed' / 'test'
@@ -26,6 +27,7 @@ if __name__=='__main__':
     if not os.path.exists(TEST_DIR):
         os.makedirs(TEST_DIR)
 
+    # Load the augmentation (center crop and resize)
     load_augm_config_train = utils.load_config('augm_train_preLoad') 
     load_augm_config_test = utils.load_config('augm_test_preLoad')
 

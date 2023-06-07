@@ -95,7 +95,7 @@ class ConvVAE(nn.Module):
         # Bottleneck layer
         if self.bottleneck:
             layers.append(nn.Linear(self.fc_input, self.fc_output))
-            layers.append(nn.BatchNorm1d(self.fc_output, momentum=0.6))
+            layers.append(nn.BatchNorm1d(self.fc_output))
             layers.append(self._get_activation())
         
         latent_input = self.fc_output if self.bottleneck else self.fc_input
@@ -113,7 +113,7 @@ class ConvVAE(nn.Module):
 
         if self.bottleneck:
             layers.append(nn.Linear(self.latent_dim, self.fc_input))
-            layers.append(nn.BatchNorm1d(self.fc_input, momentum=0.6))
+            layers.append(nn.BatchNorm1d(self.fc_input))
             layers.append(self._get_activation())
         layers.append(tg.models.Reshape(shape=[-1]+self.conv_output))
         
@@ -138,7 +138,10 @@ class ConvVAE(nn.Module):
             return nn.LeakyReLU()
         if self.activation=='sigmoid':
             return nn.Sigmoid()
-
+        
+##-- Encoder Block --##
+# The encoder block consists of a convolutional layer
+# and a configurable activation function. Additionaly one can choose to add batch normalization
 class EncoderBlock(nn.Module):
     def __init__(self,
                     in_channels,
@@ -153,7 +156,7 @@ class EncoderBlock(nn.Module):
         layers.append(nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=padding))
 
         if batch_norm:
-            layers.append(nn.BatchNorm2d(num_features=out_channels, momentum=0.9))
+            layers.append(nn.BatchNorm2d(num_features=out_channels))
 
         if activation=='relu':
             layers.append(nn.ReLU())
@@ -168,7 +171,8 @@ class EncoderBlock(nn.Module):
 
     def forward(self, x):
         return self.enc(x)
-
+##-- Decoder Block --##
+# Inverted encoder block
 
 class DecoderBlock(nn.Module):
     def __init__(self,
@@ -184,7 +188,7 @@ class DecoderBlock(nn.Module):
         layers.append(nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=padding))
 
         if batch_norm:
-            layers.append(nn.BatchNorm2d(num_features=out_channels, momentum=0.9))
+            layers.append(nn.BatchNorm2d(num_features=out_channels))
 
         if activation=='relu':
             layers.append(nn.ReLU())
