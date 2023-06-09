@@ -71,7 +71,7 @@
     },
     "loss": {
         "type": "mse_mean",
-        "lambda_kld": 0.0001,
+        "lambda_kld": 0.0001
 
     }
 }

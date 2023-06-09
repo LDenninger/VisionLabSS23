@@ -130,10 +130,8 @@ class ResizeConv2d(nn.Module):
 
 class BasicBlockEnc(nn.Module):
 
-    def __init__(self, in_planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, downsample=None):
         super().__init__()
-
-        planes = in_planes*stride
 
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -147,6 +145,7 @@ class BasicBlockEnc(nn.Module):
                 nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes)
             )
+        
 
     def forward(self, x):
         out = torch.relu(self.bn1(self.conv1(x)))
@@ -157,10 +156,8 @@ class BasicBlockEnc(nn.Module):
 
 class BasicBlockDec(nn.Module):
 
-    def __init__(self, in_planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, upsample=None):
         super().__init__()
-
-        planes = int(in_planes/stride)
 
         self.conv2 = nn.Conv2d(in_planes, in_planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(in_planes)
@@ -198,26 +195,20 @@ class BottleneckEnc(nn.Module):
 
     def __init__(
         self,
-        inplanes: int,
+        in_planes: int,
         planes: int,
         stride: int = 1,
         downsample: Optional[nn.Module] = None,
-        groups: int = 1,
-        base_width: int = 64,
-        dilation: int = 1,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
     ) -> None:
         super().__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        width = int(planes * (base_width / 64.0)) * groups
+    
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
-        self.conv1 = conv1x1(inplanes, width)
-        self.bn1 = norm_layer(width)
-        self.conv2 = conv3x3(width, width, stride, groups, dilation)
-        self.bn2 = norm_layer(width)
-        self.conv3 = conv1x1(width, planes * self.expansion)
-        self.bn3 = norm_layer(planes * self.expansion)
+        self.conv1 = conv1x1(in_planes, planes)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = conv3x3(planes, planes, stride)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv3 = conv1x1(planes, planes * self.expansion)
+        self.bn3 = nn.BatchNorm2d(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
@@ -235,10 +226,8 @@ class BottleneckEnc(nn.Module):
 
         out = self.conv3(out)
         out = self.bn3(out)
-
         if self.downsample is not None:
             identity = self.downsample(x)
-
         out += identity
         out = self.relu(out)
 
@@ -253,41 +242,34 @@ class BottleneckDec(nn.Module):
 
     def __init__(
         self,
-        inplanes: int,
+        in_planes: int,
         planes: int,
         stride: int = 1,
-        upsample: Optional[nn.Module] = None,
-        groups: int = 1,
-        base_width: int = 64,
-        dilation: int = 1,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        upsample: Optional[nn.Module] = None
+
     ) -> None:
         super().__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        width = int(planes * (base_width / 64.0)) * groups
+
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
-        self.upsample = upsample
-        self.conv3 = transConv1x1(planes * self.expansion, width)
-        self.bn3 = norm_layer(width)
+        self.conv3 = transConv1x1(planes * self.expansion, planes)
+        self.bn3 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
 
-        self.conv2 = transConv3x3(width, width, stride, groups, dilation)
-        self.bn2 = norm_layer(width)
+        self.conv2 = transConv3x3(planes, planes, stride)
+        self.bn2 = nn.BatchNorm2d(planes)
 
-        self.conv1 = transConv1x1(width, inplanes)
-        self.bn1 = norm_layer(inplanes)
+        self.conv1 = transConv1x1(planes, in_planes)
+        self.bn1 = nn.BatchNorm2d(in_planes)
+
+        self.upsample = upsample
     
         self.stride = stride
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
-        if self.upsample is not None:
-            identity = self.upsample(x)
-
         identity = x
 
-        out = self.conv3(out)
+        out = self.conv3(x)
         out = self.bn3(out)
         out = self.relu(out)
 
@@ -297,7 +279,8 @@ class BottleneckDec(nn.Module):
 
         out = self.conv1(x)
         out = self.bn1(out)
-
+        if self.upsample is not None:
+            identity = self.upsample(x)
 
         out += identity
         out = self.relu(out)
@@ -311,23 +294,34 @@ class ResNetEnc(nn.Module):
         self.in_planes = 64
         self.ada_pool = ada_pool
         self.z_dim = z_dim
-        self.conv1 = nn.Conv2d(nc, 64, kernel_size=3, stride=2, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
+        self.conv1 = nn.Conv2d(nc, self.in_planes, kernel_size=3, stride=2, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(self.in_planes)
+        self.relu = nn.ReLU(inplace=True)
+        #self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
 
     def _make_layer(self, block, planes, num_Blocks, stride):
-        strides = [stride] + [1]*(num_Blocks-1)
+        downsample = None
+        if stride != 1 or self.in_planes != planes * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1(self.in_planes, planes * block.expansion, stride),
+                nn.BatchNorm2d(planes * block.expansion),
+            )
+
+
         layers = []
-        for stride in strides:
-            layers += [block(self.in_planes, stride)]
-            self.in_planes = planes
+        layers += [block(self.in_planes, planes, stride, downsample=downsample)]
+        self.in_planes = planes * block.expansion
+        for i in range(1,num_Blocks):
+            layers += [block(self.in_planes, planes)]
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = torch.relu(self.bn1(self.conv1(x)))
+        x = self.relu(self.bn1(self.conv1(x)))
+        #x = self.maxpool(x)
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
@@ -342,25 +336,33 @@ class ResNetDec(nn.Module):
 
     def __init__(self, block=BasicBlockDec, num_blocks=[2,2,2,2], z_dim=10, nc=3):
         super().__init__()
-        self.in_planes = 512
-
-        self.linear = nn.Linear(z_dim, 512)
+        self.in_planes = 512 * block.expansion
         self.upsample = nn.Upsample(scale_factor=4, mode='bilinear')
-        self.layer4 = self._make_layer(block, 256, num_blocks[3], stride=2)
-        self.layer3 = self._make_layer(block, 128, num_blocks[2], stride=2)
-        self.layer2 = self._make_layer(block, 64, num_blocks[1], stride=2)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
         self.conv1 = ResizeConv2d(64, nc, kernel_size=3, scale_factor=2)
 
     def _make_layer(self, block, planes, num_Blocks, stride):
-        strides = [stride] + [1]*(num_Blocks-1)
+        upsample = None
+        if stride != 1 or self.in_planes != planes * block.expansion:
+            upsample = nn.Sequential(
+                transConv1x1(self.in_planes, planes * block.expansion, stride),
+                nn.BatchNorm2d(planes * block.expansion),
+            )
+     
         layers = []
-        for stride in reversed(strides):
-            layers += [block(self.in_planes, stride)]
-        self.in_planes = planes
+        layers += [block(self.in_planes, planes, stride, upsample=upsample)]
+        self.in_planes = planes * block.expansion
+        for i in range(1,num_Blocks):
+            layers += [block(self.in_planes, planes)]
+        
+
         return nn.Sequential(*layers)
 
     def forward(self, z):
+        import ipdb; ipdb.set_trace()
         x = self.upsample(z)
         x = self.layer4(x)
         x = self.layer3(x)
@@ -426,6 +428,7 @@ class BaseVAE(nn.Module):
 
     
     def forward(self, x, y=None):
+        import ipdb; ipdb.set_trace()
         z, (mu, sigma) = self.encode(x, y)
 
         x_out = self.decode(z, y)

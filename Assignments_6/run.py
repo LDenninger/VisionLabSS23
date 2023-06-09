@@ -22,8 +22,8 @@ from torchmetrics.image.fid import FrechetInceptionDistance
 ###--- Run Information ---###
 # These list of runs can be used to run multiple trainings sequentially.
 
-EXPERIMENT_NAMES = ['CondVAE', 'resnet_vae']
-RUN_NAMES = ['run_2', 'run_5']
+EXPERIMENT_NAMES = []
+RUN_NAMES = []
 EVALUATION_METRICS = ['accuracy', 'accuracy_top3', 'accuracy_top5', 'confusion_matrix', 'f1', 'recall', 'precision']
 EPOCHS = []
 
