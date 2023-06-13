@@ -22,8 +22,8 @@ from torchmetrics.image.fid import FrechetInceptionDistance
 ###--- Run Information ---###
 # These list of runs can be used to run multiple trainings sequentially.
 
-EXPERIMENT_NAMES = []
-RUN_NAMES = []
+EXPERIMENT_NAMES = ['resnet50_vae']
+RUN_NAMES = ['beta_vae']
 EVALUATION_METRICS = ['accuracy', 'accuracy_top3', 'accuracy_top5', 'confusion_matrix', 'f1', 'recall', 'precision']
 EPOCHS = []
 
@@ -69,6 +69,7 @@ class Food101Dataset(torch.utils.data.Dataset):
 # based on luminance, contrast and structure.
 # The output  is in the range of [-1,1], where 1 indicates highly similar images.
 # We normalize it to [0,1] and invert it such that 0 indicates similar images.
+# In the end, we concluded that only taking the SSIM is not a good idea because it fails to force proper image reconstruction.
 class SSIM_KLD_Loss(nn.Module):
 
     def __init__(self, lambda_kld=1e-3, device='cpu'):
@@ -145,7 +146,8 @@ class BetaLoss(nn.Module):
         recons_loss = F.mse_loss(
                 output.reshape(target.shape[0], -1),
                 target.reshape(target.shape[0], -1),
-            )
+                reduction="none",
+            ).sum(dim=-1).mean(dim=0)
         kld = (-0.5 * (1 + log_var - mu**2 - log_var.exp()).sum(dim=1)).mean(dim=0)
         loss = recons_loss + self.lambda_kld * self.beta * kld
 
@@ -202,8 +204,8 @@ def training(exp_names, run_names):
         # Simply load the dataset using TorchGadgets and define our dataset to apply the initial augmentations
         train_dataset = Food101Dataset(transforms=load_augm_config_train)
         test_dataset = Food101Dataset(train_set=False)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=4)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=4)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=2)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True, num_workers=2)
         ##-- Logging --##
         # Directory of the run that we write our logs to
         log_dir = os.path.join(os.getcwd(),'experiments', exp_name, run_name, 'logs')

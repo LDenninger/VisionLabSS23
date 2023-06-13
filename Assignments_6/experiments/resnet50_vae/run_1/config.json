@@ -1,7 +1,7 @@
 {
     "model": {
         "type": "resnet_vae",
-        "pretrained": true,
+        "pretrained": false,
         "ada_pool": true,
         "model_size": 50,
         "input_size": [
@@ -25,11 +25,12 @@
     "num_epochs": 40,
     "num_iterations": 62,
     "num_eval_iterations": 200,
-    "learning_rate": 1e-04,
+    "learning_rate": 5e-04,
     "random_seed": 22,
     "save_start": 2,
     "save_frequency": 5,    
     "pre_processing": [
+        
         {
             "type": "normalize",
             "train": true,
@@ -61,7 +62,7 @@
     "scheduler": {
         "epoch_scheduler": {
             "type": "exponential",
-            "gamma": 0.95
+            "gamma": 0.85
         },
         "iteration_scheduler": null
     },
@@ -71,5 +72,6 @@
     "loss": {
         "type": "mse_mean",
         "lambda_kld": 0.0001
+
     }
 }

@@ -15,7 +15,6 @@ from typing import Any, Callable, List, Optional, Sequence, Union, Tuple
     The ResNet18 VAE module was adapted from: https://github.com/julianstastny/VAE-ResNet18-PyTorch.
     We restructured the VAE module and added the functionality to use pre-trained models.
     In addition, we added inverse bottleneck blocks such that we can also construct decoders from ResNet50 and ResNet101.
-    So far, we did not test the larger models and concentrated on the ResNet18 which uses simpler encoding/decoding blocks.
 
 """
 
@@ -109,16 +108,17 @@ def transConv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
             in_planes,
             out_planes,
             kernel_size=1,
+            padding=0,
             scale_factor=stride
         ) 
 
 class ResizeConv2d(nn.Module):
 
-    def __init__(self, in_channels, out_channels, kernel_size, scale_factor, mode='nearest'):
+    def __init__(self, in_channels, out_channels, kernel_size, scale_factor, padding=1, mode='nearest'):
         super().__init__()
         self.scale_factor = scale_factor
         self.mode = mode
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=1)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=padding)
 
     def forward(self, x):
         x = F.interpolate(x, scale_factor=self.scale_factor, mode=self.mode)
@@ -266,7 +266,6 @@ class BottleneckDec(nn.Module):
         self.stride = stride
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-
         identity = x
 
         out = self.conv3(x)
@@ -277,7 +276,7 @@ class BottleneckDec(nn.Module):
         out = self.bn2(out)
         out = self.relu(out)
 
-        out = self.conv1(x)
+        out = self.conv1(out)
         out = self.bn1(out)
         if self.upsample is not None:
             identity = self.upsample(x)
@@ -336,33 +335,31 @@ class ResNetDec(nn.Module):
 
     def __init__(self, block=BasicBlockDec, num_blocks=[2,2,2,2], z_dim=10, nc=3):
         super().__init__()
-        self.in_planes = 512 * block.expansion
         self.upsample = nn.Upsample(scale_factor=4, mode='bilinear')
-        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
-        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
-        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
-        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        self.layer4 = self._make_layer(block, 512, 256, num_blocks[3], stride=2)
+        self.layer3 = self._make_layer(block, 256, 128, num_blocks[2], stride=2)
+        self.layer2 = self._make_layer(block, 128, 64, num_blocks[1], stride=2)
+        self.layer1 = self._make_layer(block, 64, 16, num_blocks[0], stride=1)
         self.conv1 = ResizeConv2d(64, nc, kernel_size=3, scale_factor=2)
 
-    def _make_layer(self, block, planes, num_Blocks, stride):
+    def _make_layer(self, block, planes, out_planes, num_Blocks, stride):
         upsample = None
-        if stride != 1 or self.in_planes != planes * block.expansion:
+        if stride != 1 or planes != out_planes:
             upsample = nn.Sequential(
-                transConv1x1(self.in_planes, planes * block.expansion, stride),
-                nn.BatchNorm2d(planes * block.expansion),
+                transConv1x1(planes * block.expansion, out_planes * block.expansion, stride),
+                nn.BatchNorm2d(out_planes * block.expansion),
             )
      
         layers = []
-        layers += [block(self.in_planes, planes, stride, upsample=upsample)]
+        
         self.in_planes = planes * block.expansion
         for i in range(1,num_Blocks):
             layers += [block(self.in_planes, planes)]
-        
+        layers += [block(out_planes * block.expansion, planes, stride, upsample=upsample)]
 
         return nn.Sequential(*layers)
 
     def forward(self, z):
-        import ipdb; ipdb.set_trace()
         x = self.upsample(z)
         x = self.layer4(x)
         x = self.layer3(x)
@@ -428,7 +425,6 @@ class BaseVAE(nn.Module):
 
     
     def forward(self, x, y=None):
-        import ipdb; ipdb.set_trace()
         z, (mu, sigma) = self.encode(x, y)
 
         x_out = self.decode(z, y)

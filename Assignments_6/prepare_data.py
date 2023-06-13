@@ -10,6 +10,28 @@ import json
 
 from tqdm import tqdm
 
+preprocessing = [
+                    {
+                        "type": "toTensor",
+                        "train": True,
+                        "eval": True
+                    },
+                    {
+                        "type": "dynamic_center_crop",
+                        "train": True,
+                        "eval": True
+                    },
+                    {
+                        "type": "resize",
+                        "size": [
+                            64,
+                            64
+                        ],
+                        "train": True,
+                        "eval": True
+                    }
+                ]
+
 if __name__=='__main__':
 
     # Data directory as defined by the PyTorch dataset
@@ -27,15 +49,12 @@ if __name__=='__main__':
     if not os.path.exists(TEST_DIR):
         os.makedirs(TEST_DIR)
 
-    # Load the augmentation (center crop and resize)
-    load_augm_config_train = utils.load_config('augm_train_preLoad') 
-    load_augm_config_test = utils.load_config('augm_test_preLoad')
 
     data = tg.data.load_dataset('food101')
     train_dataset = data['train_dataset']
     test_dataset = data['test_dataset']
-    train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=load_augm_config_train)
-    test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=load_augm_config_test, train_set=False)
+    train_dataset = tg.data.ImageDataset(dataset=train_dataset, transforms=preprocessing)
+    test_dataset = tg.data.ImageDataset(dataset=test_dataset, transforms=preprocessing, train_set=False)
 
     labels = []
 
