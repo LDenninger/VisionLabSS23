@@ -4,6 +4,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision as tv
 import copy
 import optuna
 import json
@@ -16,6 +17,8 @@ from models import *
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sn
+from torchmetrics.image.fid import FrechetInceptionDistance
+
 
 ###--- Datasets ---###
 
@@ -57,26 +60,18 @@ class SVHNDataset(torch.utils.data.Dataset):
     def __init__(self,  transforms: list = None, train_set: bool = True):
         self.data_augmentor = None
         self.train_set = train_set
-        if train_set:
-            self.data_dir = P(os.getcwd()) / 'data' / 'svhn_processed' / 'train'
-        else:
-            self.data_dir = P(os.getcwd()) / 'data' / 'svhn_processed' / 'test'
-
-        with open(str(self.data_dir / 'labels.json'), 'r') as f:
-            self.labels = json.load(f)
-
+        self.dataset = tv.datasets.SVHN(root='./data/svhn', split='train' if self.train_set else 'test', download=True, transform=tv.transforms.ToTensor())
         if transforms is not None:
             self.data_augmentor = tg.data.ImageDataAugmentor(transforms)
 
     def __getitem__(self, index):
-        image = torch.load(str(self.data_dir / f'img_{str(index).zfill(6)}.pt'))
-        label = self.labels[index]
+        image, label = self.dataset[index]
         if self.data_augmentor is not None:
             image, label = self.data_augmentor((image, label), self.train_set)
         return image, label
     
     def __len__(self):
-        return len(self.labels)
+        return len(self.dataset)
 
 ###--- Loss Functions ---###
 
@@ -86,8 +81,8 @@ class GAN_discriminator_loss(torch.nn.Module):
         self.device = device
 
     def forward(self, x, real=True):
-        target = torch.ones(x.shape[0]) if real else torch.zeros(x.shape[0]).to(self.device)
-        return F.binary_cross_entropy(x, target, self.device)
+        target = torch.ones(x.shape[0]).float().to(self.device) if real else torch.zeros(x.shape[0]).float().to(self.device)
+        return F.binary_cross_entropy(x, target)
 
 class GAE_generator_loss(torch.nn.Module):
     def __init__(self, device=torch.device('cpu')):
@@ -95,8 +90,8 @@ class GAE_generator_loss(torch.nn.Module):
         self.device = device
 
     def forward(self, x):
-        target = torch.ones(x.shape[0])
-        return F.binary_cross_entropy(x, target, self.device)
+        target = torch.ones(x.shape[0]).to(self.device)
+        return F.binary_cross_entropy(x, target)
 
 
 ###--- Run Information ---###
@@ -138,15 +133,18 @@ class Trainer:
         # Load config for the model
         self.config = utils.load_config_from_run(self.exp_name, self.run_name)
         self.config['num_iterations'] = self.config['dataset']['train_size'] // self.config['batch_size']
+        self.config['num_eval_iterations'] = self.config['dataset']['test_size'] // self.config['batch_size']
+
+        self.conditional = self.config['model']['conditional']
 
         tg.tools.set_random_seed(self.config['random_seed'])
         ##-- Load Dataset --##
         # Simply load the dataset using TorchGadgets and define our dataset to apply the initial augmentations
         if self.config['dataset']['name'] == 'food101':
-            train_dataset = Food101Dataset(transforms=load_augm_config_train)
+            train_dataset = Food101Dataset()
             test_dataset = Food101Dataset(train_set=False)
         elif self.config['dataset']['name'] == 'svhn':
-            train_dataset = SVHNDataset(transforms=load_augm_config_train)
+            train_dataset = SVHNDataset()
             test_dataset = SVHNDataset(train_set=False)
 
         self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, num_workers=2)
@@ -162,13 +160,25 @@ class Trainer:
         self.criterion_disc = GAN_discriminator_loss(device=self.device)
         self.criterion_gen = GAE_generator_loss(device=self.device)
 
-        self.optim_disc = torch.optim.Adam(self.discriminator.parameters(), lr=self.config['lr_discriminator'], betas=(0.5, 0.9))
-        self.optim_gen = torch.optim.Adam(self.generator.parameters(), lr=self.config['lr_generator'], betas=(0.5, 0.9))
+        self.optim_disc = torch.optim.Adam(self.gan.discriminator.parameters(), lr=self.config['lr_discriminator'], betas=(0.5, 0.9))
+        self.optim_gen = torch.optim.Adam(self.gan.generator.parameters(), lr=self.config['lr_generator'], betas=(0.5, 0.9))
 
+        self.config['learning_rate'] = self.config['lr_discriminator']
         self.schedule_disc = tg.training.SchedulerManager(self.optim_disc, self.config)
+        self.config['learning_rate'] = self.config['lr_generator']
         self.schedule_gen = tg.training.SchedulerManager(self.optim_gen, self.config)
 
         self.data_augmentor = tg.data.ImageDataAugmentor(config=self.config['pre_processing'])
+
+        if self.config['model']['sample_latent'] == 'uniform':
+            self.fixed_latent = torch.randn(self.config['batch_size'], self.config['model']['latent_dim'])
+        elif self.config['model']['sample_latent'] == 'normal':
+            self.fixed_latent = torch.normal(0.0,1.0, size=(self.config['batch_size'], self.config['model']['latent_dim']))
+        if self.config['model']['conditional']:
+            self.fixed_labels = F.one_hot((torch.randint(0, self.config['dataset']['num_labels'], size=(self.config['batch_size'],1)).squeeze()), num_classes=self.config['dataset']['num_labels']).float()
+        self.fid = FrechetInceptionDistance(feature=64, dim=2048).to(self.device)
+
+        
     
     ##-- Calls --##
     def reset(self):
@@ -182,7 +192,8 @@ class Trainer:
         EPOCHS = self.config['num_epochs']
 
         ##-- Initial Evaluation --##
-        disc_loss, disc_loss_real, disc_loss_fake, gen_loss = self.run_epoch(epoch, train=False)
+        print("Initial Evaluation:")
+        disc_loss, disc_loss_real, disc_loss_fake, gen_loss = self.run_epoch(0, train=False)
         self._print_result(disc_loss, disc_loss_real, disc_loss_fake, gen_loss)
 
         for epoch in range(EPOCHS):
@@ -193,32 +204,26 @@ class Trainer:
 
             ###--- Evaluation Epoch ---###
             if epoch % self.config['evaluation']['frequency'] == 0:
-                disc_loss, disc_loss_real, disc_loss_fake, gen_loss = self.run_epoch(epoch, train=True)
+                print('\nEvaluation {}/{}'.format(epoch + 1, EPOCHS))
+                disc_loss, disc_loss_real, disc_loss_fake, gen_loss = self.run_epoch(epoch, train=False)
                 self._print_result(disc_loss, disc_loss_real, disc_loss_fake, gen_loss)
                 
-
-
-    def _print_result(self, disc_loss, disc_loss_real, disc_loss_fake, gen_loss):
-        print('Discriminator Loss: {:.4f} (real: {:.4f} fake: {:.4f}), Generator Loss: {:.4f}'.format(disc_loss, disc_loss_real, disc_loss_fake, gen_loss))
-
-        
 
         
     def run_epoch(self,epoch, train=True):
         dataset = self.train_loader if train else self.test_loader
-        iterations = self.config['num_iterations'] if train else self.config['dataset']['num_eval_iterations']
+        iterations = self.config['num_iterations'] if train else self.config['num_eval_iterations']
 
         disc_loss_list = []
         disc_loss_real_list = []
         disc_loss_fake_list = []
         gen_loss_list = []
+        fid_score_list = []
 
         if train:
-            self.generator.train()
-            self.discriminator.train()
+            self.gan.train()
         else:
-            self.generator.eval()
-            self.discriminator.eval()
+            self.gan.eval()
         ###--- Training Epoch ---###
         if not self.suppress_output:
             progress_bar = tqdm(enumerate(dataset), total=iterations)
@@ -227,78 +232,147 @@ class Trainer:
         for i, (img, label) in progress_bar:
             if i==iterations:
                 break
+            img, label = img.to(self.device), label.to(self.device)
+            img_augm, label_augm = self.data_augmentor((img, label), train=train)
 
-             # Sample from the latent distribution
+            ##-- Latent Space Sampling --##
             B = img.shape[0]
-            if self.config['sample_latent'] == 'uniform':
-                latent = torch.randn(B, self.latent_dim, 1, 1).to(self.device)
-            elif self.config['sample_latent'] == 'normal':
-                latent = torch.normal(torch.zeros(B), torch.ones(B)).to(self.device)
-            
-            ###--- Training Discriminator ---###
-            self.optim_discr.zero_grad()
-            # Get discriminator outputs for the real samples
-            prediction_real = self.gan.discriminate(img)
-            # Compute the loss function
-            d_loss_real = self.criterion_disc(prediction_real.view(B))
+            if self.config['model']['sample_latent'] == 'uniform':
+                latent = torch.randn(B, self.config['model']['latent_dim']).to(self.device)
+            elif self.config['model']['sample_latent'] == 'normal':
+                latent = torch.normal(0.0,1.0, size=(B, self.config['model']['latent_dim'])).to(self.device)
+            if self.conditional:
+                #samp_labels = F.one_hot((torch.randint(0, self.config['dataset']['num_labels'], size=(B,1)).squeeze()), num_classes=self.config['dataset']['num_labels']).float().to(self.device)
+                disc_real_input = [img_augm, label_augm.float()]
+                gen_input = [latent, label_augm.float()]
+            else:
+                disc_real_input = [img_augm]
+                gen_input = [latent]
 
-            # Generating fake samples with the generator
-            fake_samples = self.gan.generate(latent)
-            # Get discriminator outputs for the fake samples
-            prediction_fake_d = self.gan.discriminate(fake_samples.detach())
-            # Compute the loss function
-            d_loss_fake = self.criterion_disc(prediction_fake_d.view(B), real=False)
-            (d_loss_real + d_loss_fake).backward()
-            assert fake_samples.shape == img.shape
-            
-            # optimization step
-            torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 3.0)
-            self.optim_disc.step()
-            
-            # === Train the generator ===
-            self.optim_gen.zero_grad()
-            # Get discriminator outputs for the fake samples
-            prediction_fake_g = self.discriminator(fake_samples)
-            # Compute the loss function
-            g_loss = self.criterion_gen(prediction_fake_g.view(B))
-            g_loss.backward()
-            # optimization step
-            self.optim_gen.step()
-
-            self.schedule_disc.step(i+1)
-            self.schedule_gen.step(i+1)
-
+            ###=== Training Discriminator ===###
             if train:
-                log_dir = {
-                    'train/disc_loss': (d_loss_real + d_loss_fake).item,
-                    'train/disc_loss_real': d_loss_real.item,
-                    'train/disc_loss_fake': d_loss_fake.item,
-                    'train/gen_loss': g_loss.item
-                }
-                self.logger.log_data(data=log_dir, epoch=epoch+1, iterations=i+1, model = self.gan)
+                self.optim_disc.zero_grad()
+            ##-- Predict real images --##
+            prediction_real = self.gan.discriminate(*disc_real_input)
+            ##-- Predict fake images --##
+            fake_samples = self.gan.generate(*gen_input)
+            #fake_samples_augm, label_augm = self.data_augmentor((fake_samples, label), train=train)
+            assert fake_samples.shape == img.shape
 
-            disc_loss_fake_list.append(d_loss_fake.item)
-            disc_loss_real_list.append(d_loss_real.item)
-            gen_loss_list.append(g_loss.item)
-            disc_loss_list((d_loss_real + d_loss_fake).item)
+            prediction_fake_d = self.gan.discriminate(*[fake_samples.detach(), label_augm.float().detach()] if self.conditional else [fake_samples.detach()])
+
+            ##-- Compute discriminator loss --##
+            d_loss_real = self.criterion_disc(prediction_real.view(B))
+            d_loss_fake = self.criterion_disc(prediction_fake_d.view(B), real=False)
+            if train:
+                (d_loss_real + d_loss_fake).backward()
+
+                ##-- Discriminator Optimization Step --##
+                torch.nn.utils.clip_grad_norm_(self.gan.discriminator.parameters(), 3.0)
+                self.optim_disc.step()
+                
+                ###=== Training Generator ===###
+                self.optim_gen.zero_grad()
+
+            ##-- Predict fake images --##
+            prediction_fake_g = self.gan.discriminate(*[fake_samples, label_augm.float()] if self.conditional else [fake_samples])
+            ##-- Generator Loss Computation --##
+            g_loss = self.criterion_gen(prediction_fake_g.view(B))
+            if train:
+                g_loss.backward()
+
+                ##-- Generator Optimization Step --##
+                self.optim_gen.step()
+
+                ###=== Finalization Training Iteration ===###
+
+                ##-- Learning Rate Scheduler Step --##
+                self.schedule_disc.step(i+1)
+                self.schedule_gen.step(i+1)
+
+                ##-- Logging --##
+                log_dir = {
+                    'train/disc_loss': (d_loss_real + d_loss_fake).item(),
+                    'train/disc_loss_real': d_loss_real.item(),
+                    'train/disc_loss_fake': d_loss_fake.item(),
+                    'train/gen_loss': g_loss.item()
+                }
+                self.logger.log_data(data=log_dir, epoch=epoch+1, iteration=i+1, model = self.gan)
+            
+            if not train:
+                self.fid.update(torch.round(255*img).to(dtype=torch.uint8), real=True)
+                self.fid.update(torch.round(255*(fake_samples*0.5+0.5)).to(dtype=torch.uint8), real=False)
+                fid_score_list.append(self.fid.compute().cpu().item())
+
+            disc_loss_fake_list.append(d_loss_fake.item())
+            disc_loss_real_list.append(d_loss_real.item())
+            gen_loss_list.append(g_loss.item())
+            disc_loss_list.append((d_loss_real + d_loss_fake).item())
+
+            ##-- Progress Bar Description --##
+            progress_bar.set_description("Loss: D:{:.4f}, G:{:.4f}".format((d_loss_real + d_loss_fake).item(), g_loss.item()))
 
             
         disc_loss = np.mean(disc_loss_list)
-        disc_loss_real = np.mean(disc_loss_real)
-        disc_loss_fake = np.mean(disc_loss_fake)
+        disc_loss_real = np.mean(disc_loss_real_list)
+        disc_loss_fake = np.mean(disc_loss_fake_list)
         gen_loss = np.mean(gen_loss_list)
 
         if not train:
+            fid_score = np.mean(fid_score_list)
             self.logger.log_data(epoch=epoch+1, data={'test/disc_loss': disc_loss})
             self.logger.log_data(epoch=epoch+1, data={'test/disc_loss_real': disc_loss_real})
             self.logger.log_data(epoch=epoch+1, data={'test/disc_loss_fake': disc_loss_fake})
             self.logger.log_data(epoch=epoch+1, data={'test/gen_loss': gen_loss})
+            self.logger.log_data(epoch=epoch+1, data={'test/fid_score': fid_score})
+
 
         return disc_loss, disc_loss_real, disc_loss_fake, gen_loss
+    ##-- Evaluation Functions --##
+    def generate_samples(self, class_label: int=None, batch_size=64):
 
+        if self.config['model']['sample_latent'] == 'uniform':
+            latent = torch.randn(batch_size, self.config['model']['latent_dim']).to(self.device)
+        elif self.config['model']['sample_latent'] == 'normal':
+            latent = torch.normal(0.0,1.0, size=(batch_size, self.config['model']['latent_dim'])).to(self.device)
+        if self.conditional:
+            if class_label is None:
+                class_labels = torch.randint(0, self.config['dataset']['num_labels'], size=(batch_size, 1)).squeeze()
+                samp_labels = F.one_hot(class_labels, num_classes=self.config['dataset']['num_labels']).float().to(self.device)
+            else:
+                samp_labels = F.one_hot(torch.repeat_interleave(class_label, batch_size, dim=0), num_classes=self.config['dataset']['num_labels']).float().to(self.device)
+            gen_input = [latent, samp_labels]
+        else:
+            class_labels = torch.zeros(batch_size)
+            gen_input = [latent]
+        
+        gen_out = self.gan.generate(*gen_input)
 
+        # Assume normalization in the generation process
+        gen_out = gen_out * 0.5 + 0.5
 
+        gen_out = gen_out.detach().cpu()
+        return gen_out, class_labels
+    
+    @torch.no_grad()
+    def generate(self, latent, labels=None):
 
+        self.gan.eval()
+        gen_out = self.gan.generate(*[latent, labels] if self.conditional else [latent])
+        gen_out = gen_out * 0.5 + 0.5
+        return gen_out            
+
+    ##-- Util Functions --##
+    def _print_result(self, disc_loss, disc_loss_real, disc_loss_fake, gen_loss):
+        print('Discriminator Loss: {:.4f} (real: {:.4f} fake: {:.4f}), Generator Loss: {:.4f}'.format(disc_loss, disc_loss_real, disc_loss_fake, gen_loss))
+
+    def _sample_latent(self, size, mode: str = 'uniform'):
+        if mode == 'uniform':
+            latent = torch.randn(size, self.config['model']['latent_dim'])
+        elif mode == 'normal':
+            latent = torch.normal(0.0,1.0, size=(size, self.config['model']['latent_dim']))
+        
+        return latent
 
 
 ###--- Training ---###
@@ -308,6 +382,7 @@ class Trainer:
 def training(exp_names, run_names):
     assert len(exp_names) == len(run_names)
     for exp_name, run_name in zip(exp_names, run_names):
+        print(f' Start training...\n exp. name: \t{exp_name}, run name: \t{run_name}')
         trainer = Trainer(exp_name, run_name)
         trainer.train()
 
