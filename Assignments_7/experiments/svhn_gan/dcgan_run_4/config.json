@@ -1,0 +1,135 @@
+{
+    "model": {
+        "type": "gan",
+        "generator": {
+            "input_size": [
+                1024,
+                1,
+                1
+            ],
+            "hidden_dims": [
+                1024,
+                512,
+                256,
+                128
+          
+            ],
+            "strides": [
+                2,
+                2,
+                2,
+                2
+            ],
+            "kernel_sizes": [
+                4,
+                4,
+                4,
+                4
+
+            ],
+            "embedding": "conv"
+            
+        },
+        "discriminator": {
+            "input_size": [
+                3,
+                32,
+                32
+            ],
+            "hidden_dims": [
+                128,
+                256,
+                512,
+                1024
+            ],
+            "strides": [
+                2,
+                2,
+                2,
+                2
+            ],
+            "kernel_sizes": [
+                4,
+                4,
+                4,
+                4
+
+            ],
+            "dropout": 0.3,
+            "add_fc": true,
+            "fc_input": 4096
+        },
+        "conditional": false,
+        "num_labels": 10,
+        "latent_dim": 100,
+        "sample_latent": "uniform"
+    },
+    "batch_size": 256,
+    "num_epochs": 50,
+    "num_iterations": 62,
+    "num_eval_iterations": 200,
+    "lr_generator": 3e-04,
+    "lr_discriminator": 3e-04,
+    "random_seed": 22,
+    "save_start": 2,
+    "save_frequency": 10,    
+    "pre_processing": [
+        {
+            "type": "one_hot_encoding",
+            "num_classes": 10,
+            "train": true,
+            "eval": true
+        },
+        {
+            "type": "normalize_custom",
+            "mean": [
+                0.5,
+                0.5,
+                0.5
+            ],
+            "std": [
+                0.5,
+                0.5,
+                0.5
+            ],
+            "train": true,
+            "eval": true
+        }
+    ],
+    "evaluation": {
+        "metrics": [],
+        "frequency": 1,
+        "target_to_pred": false
+    },
+    "dataset": {
+        "name": "svhn",
+        "train_size": 73257,
+        "val_size": 531131,
+        "test_size": 26032,
+        "train_shuffle": true,
+        "eval_shuffle": false,
+        "drop_last": true,
+        "num_labels": 10,
+        "classes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+        ]
+    },
+    "scheduler": {
+        "epoch_scheduler": {
+            "type": "exponential",
+            "gamma": 0.9
+        },
+        "iteration_scheduler": null
+    },
+    "optimizer": {
+        "type": "Adam"
+    },
+    "loss": {
+        "type": "gan"
+    }
+}

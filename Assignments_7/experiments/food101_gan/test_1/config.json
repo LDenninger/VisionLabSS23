@@ -1,0 +1,149 @@
+{
+    "model": {
+        "type": "gan",
+        "generator": {
+            "input_size": [
+                512,
+                1,
+                1
+            ],
+            "hidden_dims": [
+                512,
+                256,
+                256,
+                128,
+                128,
+                64
+          
+            ],
+            "strides": [
+                2,
+                2,
+                2,
+                2,
+                2,
+                1
+            ],
+            "kernel_sizes": [
+                4,
+                4,
+                4,
+                4,
+                4,
+                3
+
+
+            ],
+            "embedding": "conv"
+            
+        },
+        "discriminator": {
+            "input_size": [
+                3,
+                64,
+                64
+            ],
+            "hidden_dims": [
+                64,
+                128,
+                128,
+                256,
+                256,
+                512
+            ],
+            "strides": [
+                1,
+                2,
+                2,
+                2,
+                2,
+                2
+                
+            ],
+            "kernel_sizes": [
+                3,
+                4,
+                4,
+                4,
+                4,
+                4
+
+            ],
+            "dropout": 0.3,
+            "add_fc": true,
+            "fc_input": 2048
+        },
+        "conditional": false,
+        "num_labels": 101,
+        "latent_dim": 100,
+        "sample_latent": "uniform"
+    },
+    "batch_size": 128,
+    "num_epochs": 50,
+    "num_iterations": 62,
+    "num_eval_iterations": 200,
+    "lr_generator": 3e-04,
+    "lr_discriminator": 3e-04,
+    "random_seed": 22,
+    "save_start": 2,
+    "save_frequency": 5,    
+    "pre_processing": [
+        {
+            "type": "one_hot_encoding",
+            "num_classes": 101,
+            "train": true,
+            "eval": true
+        },
+        {
+            "type": "normalize_custom",
+            "mean": [
+                0.5,
+                0.5,
+                0.5
+            ],
+            "std": [
+                0.5,
+                0.5,
+                0.5
+            ],
+            "train": true,
+            "eval": true
+        }
+    ],
+    "evaluation": {
+        "metrics": [],
+        "frequency": 1,
+        "target_to_pred": false
+    },
+    "dataset": {
+        "name": "food101",
+        "train_size": 75750,
+        "val_size": 25250,
+        "test_size": 25250,
+        "train_shuffle": true,
+        "eval_shuffle": false,
+        "drop_last": true,
+        "num_labels": 101,
+        "classes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+        ]
+    },
+    "scheduler": {
+        "epoch_scheduler": {
+            "type": "exponential",
+            "gamma": 0.9
+        },
+        "iteration_scheduler": null
+    },
+    "optimizer": {
+        "type": "Adam"
+    },
+    "loss": {
+        "type": "gan"
+    }
+}
