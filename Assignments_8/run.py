@@ -227,7 +227,6 @@ class TripletLoss(nn.Module):
     def compute_loss_with_negative_mining(self, anchor, positive, labels):
         d_ap = (anchor - positive).pow(2).sum(dim=-1)
         d_an = torch.zeros_like(d_ap)
-        import ipdb; ipdb.set_trace()
         anchor_pairwise_dist = torch.cdist(anchor, anchor, p=2)
 
         for anchor_id in range(anchor_pairwise_dist.shape[0]):
@@ -282,6 +281,10 @@ class Trainer:
     
     def load_checkpoint(self, epoch):
         utils.load_model_from_checkpoint(self.exp_name, self.run_name, self.model, epoch, optimizer=None)
+
+    @torch.no_grad()
+    def get_embedding_vector(self, input):
+        return self.model(input.to(self.device)).cpu()
 
     
     def initialize_training(self):
@@ -440,7 +443,6 @@ class Trainer:
         return losses
 
     def training(self):
-        import ipdb; ipdb.set_trace()
         # Initial Evaluation
         print(f'Initial Evaluation:')
         losses = self.training_function(epoch=-1, is_train=False)
