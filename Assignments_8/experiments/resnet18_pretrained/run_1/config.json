@@ -2,7 +2,7 @@
     "model": {
         "type": "siamese",
         "emb_dim": 128,
-        "pretrained": false,
+        "pretrained": true,
         "stack_input": true
     },
     "batch_size": 128,

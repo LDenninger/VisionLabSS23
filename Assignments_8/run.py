@@ -316,11 +316,12 @@ class Trainer:
             train_sampler = None
             test_sampler = None
 
-        self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True,batch_sampler=train_sampler, num_workers=0)
-        self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, batch_sampler=test_sampler, num_workers=0)
+        self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True,batch_sampler=train_sampler, num_workers=2)
+        self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, batch_sampler=test_sampler, num_workers=2)
         ##-- Logging --##
         # Directory of the run that we write our logs to
         self.model = SiameseModel(emb_dim=self.config['model']['emb_dim'], pretrained=self.config['model']['pretrained'])
+        self.model = self.model.to(self.device)
         # Explicitely define logger to enable TensorBoard logging and setting the log directory
         self.logger = tg.logging.Logger(log_dir=self.log_dir, checkpoint_dir=self.checkpoint_dir, model_config=self.config, save_internal=True)
 
@@ -334,7 +335,6 @@ class Trainer:
         self.data_augmentor = tg.data.ImageDataAugmentor(config=self.config['pre_processing'])
 
     def run_epoch_triplet(self, epoch, is_train=True):
-        import ipdb; ipdb.set_trace()
         
         if is_train:
             self.model.train()
@@ -443,8 +443,6 @@ class Trainer:
         return losses
 
     def training(self):
-        import ipdb; ipdb.set_trace()
-
         # Initial Evaluation
         print(f'Initial Evaluation:')
         losses = self.training_function(epoch=-1, is_train=False)
