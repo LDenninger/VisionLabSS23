@@ -36,12 +36,15 @@ from models import SiameseModel
 
 from pathlib import Path as P
 
+from pytorch_metric_learning import losses as pml_losses
+from pytorch_metric_learning import miners as pml_miners
+
 
 ###--- Run Information ---###
 # These list of runs can be used to run multiple trainings sequentially.
 
-EXPERIMENT_NAMES = ['resnet18_mining']
-RUN_NAMES = ['run_2']
+EXPERIMENT_NAMES = []
+RUN_NAMES = []
 EVALUATION_METRICS = []
 EPOCHS = []
 
@@ -251,8 +254,18 @@ class AngularLoss(nn.Module):
 
     def __init__(self, alpha=40):
         super().__init__()
-        self.alpha = torch.tensor(np.radians(alpha))
+        self.loss = pml_losses.AngularLoss(alpha=alpha)
+        self.miner = pml_miners.AngularMiner()
         return
+    
+    def forward(self, anchor, positive, labels=None):
+        import ipdb; ipdb.set_trace()
+        input = torch.cat((anchor, positive), dim=0)
+        labels = torch.cat((labels, labels), dim=0)
+        miner_output = self.miner(input, labels)
+        loss = self.loss(input, labels, miner_output)
+
+        return loss
     
     
 
@@ -317,8 +330,10 @@ class Trainer:
 
         
         if self.config['loss']['type'] in ['AngularLoss', 'NPairLoss']:
-            train_sampler = NPairSampler(N = self.config['batch_size'], dataset_length = self.config['dataset']['train_size'])
-            test_sampler = NPairSampler(N = self.config['batch_size'], dataset_length = self.config['dataset']['test_size'])
+            #train_sampler = NPairSampler(N = self.config['batch_size'], dataset_length = self.config['dataset']['train_size'])
+            #test_sampler = NPairSampler(N = self.config['batch_size'], dataset_length = self.config['dataset']['test_size'])
+            train_sampler = None
+            test_sampler = None
         else:
             train_sampler = None
             test_sampler = None
@@ -400,7 +415,6 @@ class Trainer:
         return losses
 
     def run_epoch_double(self, epoch, is_train=True):
-
         if is_train:
             self.model.train()
         else:
