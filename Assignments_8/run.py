@@ -285,6 +285,10 @@ class Trainer:
     def load_checkpoint(self, epoch):
         utils.load_model_from_checkpoint(self.exp_name, self.run_name, self.model, epoch, optimizer=None)
 
+    @torch.no_grad()
+    def get_embedding_vector(self, input):
+        return self.model(input.to(self.device)).cpu()
+
     
     def initialize_training(self):
         # Load config for the model
