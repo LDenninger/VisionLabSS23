@@ -5,7 +5,7 @@
         "pretrained": true,
         "stack_input": true
     },
-    "batch_size": 128,
+    "batch_size": 256,
     "num_epochs": 20,
     "num_iterations": 62,
     "num_eval_iterations": 200,

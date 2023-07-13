@@ -227,13 +227,15 @@ class TripletLoss(nn.Module):
     def compute_loss_with_negative_mining(self, anchor, positive, labels):
         d_ap = (anchor - positive).pow(2).sum(dim=-1)
         d_an = torch.zeros_like(d_ap)
-        import ipdb; ipdb.set_trace()
         anchor_pairwise_dist = torch.cdist(anchor, anchor, p=2)
 
         for anchor_id in range(anchor_pairwise_dist.shape[0]):
             non_same_label_index = torch.nonzero(labels != labels[anchor_id]).squeeze()
             larger_than_pos_index = torch.nonzero(anchor_pairwise_dist[anchor_id][non_same_label_index] > d_ap[anchor_id]).squeeze()
-            minimum_distance = torch.min(anchor_pairwise_dist[anchor_id][non_same_label_index][larger_than_pos_index])
+            if anchor_pairwise_dist[anchor_id][non_same_label_index][larger_than_pos_index].numel()==0:
+                minimum_distance = torch.min(anchor_pairwise_dist[anchor_id][non_same_label_index]) # Allow violation
+            else:
+                minimum_distance = torch.min(anchor_pairwise_dist[anchor_id][non_same_label_index][larger_than_pos_index])
             d_an[anchor_id] = minimum_distance
         
         # triplet loss function
@@ -390,7 +392,6 @@ class Trainer:
         return losses
 
     def run_epoch_double(self, epoch, is_train=True):
-        import ipdb; ipdb.set_trace()
 
         if is_train:
             self.model.train()
@@ -440,7 +441,6 @@ class Trainer:
         return losses
 
     def training(self):
-        import ipdb; ipdb.set_trace()
         # Initial Evaluation
         print(f'Initial Evaluation:')
         losses = self.training_function(epoch=-1, is_train=False)
