@@ -40,8 +40,8 @@ from pathlib import Path as P
 ###--- Run Information ---###
 # These list of runs can be used to run multiple trainings sequentially.
 
-EXPERIMENT_NAMES = []
-RUN_NAMES = []
+EXPERIMENT_NAMES = ['resnet18_mining']
+RUN_NAMES = ['run_2']
 EVALUATION_METRICS = []
 EPOCHS = []
 
@@ -261,9 +261,10 @@ class AngularLoss(nn.Module):
 # The experiments are structured into the "/experiments" directory, where all TensorBoard and PyTorch files can be found
 
 class Trainer:
-    def __init__(self, exp_name, run_name):
+    def __init__(self, exp_name, run_name, logging=True):
         self.exp_name = exp_name
         self.run_name = run_name
+        self.logging = logging
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.experiment_dir = P(os.getcwd()) / 'experiments' / self.exp_name
         self.run_dir = self.experiment_dir / self.run_name
@@ -287,6 +288,7 @@ class Trainer:
 
     @torch.no_grad()
     def get_embedding_vector(self, input):
+        self.model.eval()
         return self.model(input.to(self.device)).cpu()
 
     
@@ -328,7 +330,8 @@ class Trainer:
         self.model = SiameseModel(emb_dim=self.config['model']['emb_dim'], pretrained=self.config['model']['pretrained'])
         self.model = self.model.to(self.device)
         # Explicitely define logger to enable TensorBoard logging and setting the log directory
-        self.logger = tg.logging.Logger(log_dir=self.log_dir, checkpoint_dir=self.checkpoint_dir, model_config=self.config, save_internal=True)
+        if self.logging:
+            self.logger = tg.logging.Logger(log_dir=self.log_dir, checkpoint_dir=self.checkpoint_dir, model_config=self.config, save_internal=True)
 
         if self.config['loss']['type'] == 'TripletLoss':
             self.criterion = TripletLoss(margin=self.config['loss']['margin'], reduce=self.config['loss']['reduce'], negative_mining=self.config['loss']['mining'])
@@ -381,10 +384,11 @@ class Trainer:
                 loss.backward()
                 self.optimizer.step()
 
-                log_dir = {
-                    'train/loss': loss.item(),
-                }
-                self.logger.log_data(data=log_dir, epoch=epoch+1, iteration=i+1, model = self.model)
+                if self.logging:
+                    log_dir = {
+                        'train/loss': loss.item(),
+                    }
+                    self.logger.log_data(data=log_dir, epoch=epoch+1, iteration=i+1, model = self.model)
             if i == 0:
                 loss_smooth = loss.item()
             else:
@@ -428,11 +432,11 @@ class Trainer:
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-
-                log_dir = {
-                    'train/loss': loss.item(),
-                }
-                self.logger.log_data(data=log_dir, epoch=epoch+1, iteration=i+1, model = self.model)
+                if self.logging:
+                    log_dir = {
+                        'train/loss': loss.item(),
+                    }
+                    self.logger.log_data(data=log_dir, epoch=epoch+1, iteration=i+1, model = self.model)
 
             if i == 0:
                 loss_smooth = loss.item()
@@ -448,7 +452,8 @@ class Trainer:
         # Initial Evaluation
         print(f'Initial Evaluation:')
         losses = self.training_function(epoch=-1, is_train=False)
-        self.logger.log_data(data={'test/loss': np.mean(losses)}, epoch=0)
+        if self.logging:
+            self.logger.log_data(data={'test/loss': np.mean(losses)}, epoch=0)
         print(' Eval Loss: {:.4f}'.format(np.mean(losses)))
 
         for epoch in range(self.config['num_epochs']):
@@ -460,7 +465,8 @@ class Trainer:
             # Evaluation epoch
             if epoch % self.config['evaluation']['frequency'] == 0:
                 losses = self.training_function(epoch=epoch, is_train=False)
-                self.logger.log_data(data={'test/loss': np.mean(losses)}, epoch=epoch+1)
+                if self.logging:
+                    self.logger.log_data(data={'test/loss': np.mean(losses)}, epoch=epoch+1)
                 p_str += ' Eval Loss: {:.4f}'.format(np.mean(losses))
 
             print(p_str)
