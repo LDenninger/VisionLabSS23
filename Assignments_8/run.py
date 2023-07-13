@@ -259,7 +259,6 @@ class AngularLoss(nn.Module):
         return
     
     def forward(self, anchor, positive, labels=None):
-        import ipdb; ipdb.set_trace()
         input = torch.cat((anchor, positive), dim=0)
         labels = torch.cat((labels, labels), dim=0)
         miner_output = self.miner(input, labels)

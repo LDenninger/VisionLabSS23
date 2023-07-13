@@ -6,7 +6,7 @@
         "stack_input": true
     },
     "batch_size": 256,
-    "num_epochs": 50,
+    "num_epochs": 40,
     "num_iterations": 62,
     "num_eval_iterations": 200,
     "learning_rate": 3e-04,
