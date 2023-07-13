@@ -103,7 +103,7 @@ class TripletDataset(Dataset):
     def __init__(self, dataset, data_path="data/Market-1501", is_train=True):
         super(TripletDataset, self).__init__()
         self.dataset = dataset
-        with open(os.path.join(data_path, 'train_meta_dir.json' if is_train else 'train_meta_dir.json'), 'r') as f:
+        with open(os.path.join(data_path, 'train_meta_dir.json' if is_train else 'test_meta_dir.json'), 'r') as f:
             self.meta_dir = json.load(f)
     
     def __len__(self):
@@ -131,20 +131,19 @@ class DoubleDataset(Dataset):
     def __init__(self, dataset, data_path="data/Market-1501", is_train=True):
         super(DoubleDataset, self).__init__()
         self.dataset = dataset
-        with open(os.path.join(data_path, 'train_meta_dir.json' if is_train else 'train_meta_dir.json'), 'r') as f:
+        with open(os.path.join(data_path, 'train_meta_dir.json' if is_train else 'test_meta_dir.json'), 'r') as f:
             self.meta_dir = json.load(f)
     
     def __len__(self):
         return len(self.dataset)
     
     def __getitem__(self, idx):
-
         anchor_img, anchor_label = self.dataset[idx]
 
-        positive_img_idx = np.random.choice(self.meta_dir[anchor_label].keys())
+        positive_img_idx = np.random.choice(list(self.meta_dir[str(anchor_label)].keys()))
         while positive_img_idx == idx:
-            positive_img_idx = np.random.choice(self.meta_dir[anchor_label].keys())
-        positive_img, positive_label = self.dataset[positive_img_idx]
+            positive_img_idx = np.random.choice(list(self.meta_dir[str(anchor_label)].keys()))
+        positive_img, positive_label = self.dataset[int(positive_img_idx)]
 
         return (anchor_img, positive_img), (anchor_label, positive_label)
     
@@ -156,7 +155,7 @@ class NPairSampler(Sampler):
         self.allow_vialation = allow_vialation
         self.dataset_length = dataset_length
         self.iterations = dataset_length // N if drop_last else dataset_length // N + 1
-        with open(os.path.join(data_path, 'train_meta_dir.json' if is_train else 'train_meta_dir.json'), 'r') as f:
+        with open(os.path.join(data_path, 'train_meta_dir.json' if is_train else 'test_meta_dir.json'), 'r') as f:
             self.meta_dir = json.load(f)
         self.class_size = {}
         for key, value in self.meta_dir.items():
@@ -228,12 +227,12 @@ class TripletLoss(nn.Module):
     def compute_loss_with_negative_mining(self, anchor, positive, labels):
         d_ap = (anchor - positive).pow(2).sum(dim=-1)
         d_an = torch.zeros_like(d_ap)
-
+        import ipdb; ipdb.set_trace()
         anchor_pairwise_dist = torch.cdist(anchor, anchor, p=2)
 
-        for anchor_id in anchor_pairwise_dist.shape[0]:
-            non_same_label_index = torch.nonzero(anchor_pairwise_dist[anchor_id]!= labels)
-            larger_than_pos_index = torch.nonzero(anchor_pairwise_dist[anchor_id][non_same_label_index] > d_ap)
+        for anchor_id in range(anchor_pairwise_dist.shape[0]):
+            non_same_label_index = torch.nonzero(labels != labels[anchor_id]).squeeze()
+            larger_than_pos_index = torch.nonzero(anchor_pairwise_dist[anchor_id][non_same_label_index] > d_ap[anchor_id]).squeeze()
             minimum_distance = torch.min(anchor_pairwise_dist[anchor_id][non_same_label_index][larger_than_pos_index])
             d_an[anchor_id] = minimum_distance
         
@@ -316,8 +315,8 @@ class Trainer:
             train_sampler = None
             test_sampler = None
 
-        self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True,batch_sampler=train_sampler, num_workers=2)
-        self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, batch_sampler=test_sampler, num_workers=2)
+        self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True,batch_sampler=train_sampler, num_workers=0)
+        self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, batch_sampler=test_sampler, num_workers=0)
         ##-- Logging --##
         # Directory of the run that we write our logs to
         self.model = SiameseModel(emb_dim=self.config['model']['emb_dim'], pretrained=self.config['model']['pretrained'])
@@ -391,6 +390,7 @@ class Trainer:
         return losses
 
     def run_epoch_double(self, epoch, is_train=True):
+        import ipdb; ipdb.set_trace()
 
         if is_train:
             self.model.train()
@@ -405,13 +405,10 @@ class Trainer:
             # setting inputs to GPU
             anchor = anchor.to(self.device)
             positive = positive.to(self.device)
-            negative = negative.to(self.device)
 
-            # forward pass and triplet loss
-            loss = self.criterion(anchor, positive, negative)
-
+            # forward pass
             if self.config['model']['stack_input']:
-                input = torch.cat((anchor, positive, negative), dim=0)
+                input = torch.cat((anchor, positive), dim=0)
                 embedding = self.model(input)
                 anchor_emb = embedding[:self.config['batch_size']]
                 positive_emb = embedding[self.config['batch_size']:]
@@ -443,6 +440,7 @@ class Trainer:
         return losses
 
     def training(self):
+        import ipdb; ipdb.set_trace()
         # Initial Evaluation
         print(f'Initial Evaluation:')
         losses = self.training_function(epoch=-1, is_train=False)
