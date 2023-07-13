@@ -323,8 +323,8 @@ class Trainer:
             train_sampler = None
             test_sampler = None
 
-        self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True,batch_sampler=train_sampler, num_workers=0)
-        self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, batch_sampler=test_sampler, num_workers=0)
+        self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True,batch_sampler=train_sampler, num_workers=2)
+        self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, batch_sampler=test_sampler, num_workers=2)
         ##-- Logging --##
         # Directory of the run that we write our logs to
         self.model = SiameseModel(emb_dim=self.config['model']['emb_dim'], pretrained=self.config['model']['pretrained'])
