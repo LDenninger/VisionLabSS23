@@ -1,0 +1,57 @@
+{
+    "model": {
+        "type": "siamese",
+        "emb_dim": 128,
+        "pretrained": false,
+        "stack_input": true,
+    },
+    "batch_size": 128,
+    "num_epochs": 20,
+    "num_iterations": 62,
+    "num_eval_iterations": 200,
+    "lr_generator": 3e-04,
+    "lr_discriminator": 3e-04,
+    "random_seed": 22,
+    "save_start": 2,
+    "save_frequency": 5,    
+    "pre_processing": [
+    
+        {
+            "type": "normalize",
+            "train": true,
+            "eval": true
+        }
+    ],
+    "evaluation": {
+        "metrics": [],
+        "frequency": 1,
+        "target_to_pred": false
+    },
+    "dataset": {
+        "name": "market1501",
+        "train_size": 12936,
+        "val_size": 13115,
+        "test_size": 13115,
+        "train_shuffle": true,
+        "eval_shuffle": true,
+        "drop_last": true,
+        "num_labels": 101,
+        "classes": []
+    },
+    "scheduler": {
+        "epoch_scheduler": {
+            "type": "exponential",
+            "gamma": 0.9
+        },
+        "iteration_scheduler": null
+    },
+    "optimizer": {
+        "type": "Adam"
+    },
+    "loss": {
+        "type": "TripletLoss",
+        "margin": 0.2,
+        "reduce": "mean",
+        "mining": true
+    }
+}
