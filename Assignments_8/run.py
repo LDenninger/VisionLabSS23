@@ -60,10 +60,9 @@ class Market1501(Dataset):
         The other option is to download it from a Google drive: https://drive.google.com/file/d/0B8-rUzbwVRk0c054eEozWG9COHM/view?pli=1&resourcekey=0-8nyl7K9_x37HlQm34MmrYQ
 
         Before using the DataLoader one needs to run the script: build_meta_file.sh.
-        This script reads the data and builds a meta file that contains the image names for each person to quickly load positive samples.
+        This script reads the data and builds a meta file that contains the image paths and indices for each class.
 
-        The problem of the dataset is the test set that does not contain information about the persons.
-        We take the images from the query directory as the test set.
+
     '''
     def __init__(self, data_path="data/Market-1501", is_train=True, transforms=None):
         super(Market1501, self).__init__()
@@ -103,6 +102,10 @@ class Market1501(Dataset):
         return img, label
     
 class TripletDataset(Dataset):
+    """
+        Wrapper class to sample triplets from the Market-1501 dataset.
+    
+    """
     def __init__(self, dataset, data_path="data/Market-1501", is_train=True):
         super(TripletDataset, self).__init__()
         self.dataset = dataset
@@ -131,6 +134,9 @@ class TripletDataset(Dataset):
         return (anchor_img, positive_img, negative_img), (anchor_label, positive_label, negative_label)
     
 class DoubleDataset(Dataset):
+    """
+        Wrapper class to sample anchor and a corresponding positive image from the Market-1501 dataset
+    """
     def __init__(self, dataset, data_path="data/Market-1501", is_train=True):
         super(DoubleDataset, self).__init__()
         self.dataset = dataset
@@ -150,14 +156,23 @@ class DoubleDataset(Dataset):
 
         return (anchor_img, positive_img), (anchor_label, positive_label)
     
+###--- Sampler ---###
+    
 class NPairSampler(Sampler):
-    def __init__(self, N, dataset_length, data_path="data/Market-1501", drop_last=True, is_train=True, allow_vialation=True) -> None:
-        super(NPairSampler, self).__init__()
+    """
+        Sampler used for the NPairsLoss.
+
+        The NPairsLoss requires a batch to contain N different classes. 
+
+        This sampler returns a set of indices such that in each batch of N images there are N different classes.
+        In conjunction with the DoubleDataset, we sample N different classes and for each class a positive example.
+    """
+    def __init__(self, N, data_source, data_path="data/Market-1501", drop_last=True, is_train=True) -> None:
+        super().__init__(data_source)
 
         self.N = N
-        self.allow_vialation = allow_vialation
-        self.dataset_length = dataset_length
-        self.iterations = dataset_length // N if drop_last else dataset_length // N + 1
+        self.dataset_length = data_source
+        self.iterations = self.dataset_length // N if drop_last else self.dataset_length // N + 1
         with open(os.path.join(data_path, 'train_meta_dir.json' if is_train else 'test_meta_dir.json'), 'r') as f:
             self.meta_dir = json.load(f)
         self.class_size = {}
@@ -166,30 +181,52 @@ class NPairSampler(Sampler):
         self.labels = self.meta_dir.keys()
         assert  self.N <= len(self.meta_dir.keys()), "Please provide N larger than the number of classes"
 
-
     def __iter__(self):
-
-        avail_data = copy.deepcopy(self.meta_dir.keys())
-        class_size = copy.deepcopy(self.class_size)
+        # Initialize with all data
+        avail_data = copy.deepcopy(self.meta_dir)
+        removed_labels = []
 
         indices = []
-        for iter in range(self.iterations):
-            avail_keys = avail_data.keys()
-            np.random.shuffle(avail_keys)
+        # Iterate over each batch
+        for i in range(self.iterations):
+            ext_req = False
+            # Get available keys left 
+            avail_keys = list(avail_data.keys())
 
+            # If less classes are left than required by the batch size, fill up with already chosen imgs from other classes
+            # This is required during later iterations (~last 10% of epoch).
             if len(avail_keys) < self.N:
-                if self.allow_vialation:
-                    diff = self.N - len(avail_keys)
-
-                    
-            random_labels = avail_keys[:self.N]
+                ext_req = True
+                diff = self.N - len(avail_keys)
+                np.random.shuffle(removed_labels)
+                ext_ind = removed_labels[:diff]
+                avail_keys = avail_keys + ext_ind
+                np.random.shuffle(avail_keys)
+                # Shuffle labels randomly within batch
+                random_labels = avail_keys
+            else:
+                np.random.shuffle(avail_keys)
+                # Shuffle labels randomly within batch
+                random_labels = avail_keys[:self.N]
             for label in random_labels:
-                index = np.random.choice(avail_data[label].keys())
-                indices.append(index)
-                avail_data[label].remove(index)
-                if len(avail_data[label]) == 0:
-                    avail_data.remove(label)
-    
+                if ext_req and label in ext_ind:
+                    # Load already chosen images to fill up
+                    index = np.random.choice(list(self.meta_dir[label].keys()))
+                else:
+                    # Load image and remove it from available data
+                    index = np.random.choice(list(avail_data[label].keys()))
+                    avail_data[label].pop(index)
+
+                    if len(avail_data[label]) == 0:
+                        avail_data.pop(label)
+                        removed_labels.append(label)
+                # Append index
+                indices.append(int(index))
+                    
+        return iter(indices)
+
+    def __len__(self):
+        return self.dataset_length
 
 ###--- Loss Functions ---###
 
@@ -229,16 +266,26 @@ class TripletLoss(nn.Module):
         return loss
     
     def compute_loss_with_negative_mining(self, anchor, positive, labels):
+        """ 
+            Compute the TripletLoss using semi-hard negative mining strategy.
+            This function could be designed more efficiently.
+        """
+        # Compute distance of positive examples
         d_ap = (anchor - positive).pow(2).sum(dim=-1)
         d_an = torch.zeros_like(d_ap)
+        # Compute pairwise distance between the anchors
         anchor_pairwise_dist = torch.cdist(anchor, anchor, p=2)
-
+        # Iterate over all anchors
         for anchor_id in range(anchor_pairwise_dist.shape[0]):
+            # Get index of all anchors with different label
             non_same_label_index = torch.nonzero(labels != labels[anchor_id]).squeeze()
+            # Get indices of anchors with different label and larger distance than the positive example
             larger_than_pos_index = torch.nonzero(anchor_pairwise_dist[anchor_id][non_same_label_index] > d_ap[anchor_id]).squeeze()
+            # If the positive example is far away and all negative examples are closer, allow violation of that constraint
             if anchor_pairwise_dist[anchor_id][non_same_label_index][larger_than_pos_index].numel()==0:
-                minimum_distance = torch.min(anchor_pairwise_dist[anchor_id][non_same_label_index]) # Allow violation
+                minimum_distance = torch.min(anchor_pairwise_dist[anchor_id][non_same_label_index])
             else:
+                # Compute minimum distance of the other anchors meeting the given requirements
                 minimum_distance = torch.min(anchor_pairwise_dist[anchor_id][non_same_label_index][larger_than_pos_index])
             d_an[anchor_id] = minimum_distance
         
@@ -252,6 +299,9 @@ class TripletLoss(nn.Module):
         return loss
     
 class AngularLoss(nn.Module):
+    """
+        Implementation of the angular loss function using the pytorch-metric-learning library.
+    """
 
     def __init__(self, alpha=40):
         super().__init__()
@@ -259,14 +309,28 @@ class AngularLoss(nn.Module):
         self.miner = pml_miners.AngularMiner()
         return
     
-    def forward(self, anchor, positive, labels=None):
+    def forward(self, anchor, positive, labels):
         input = torch.cat((anchor, positive), dim=0)
         labels = torch.cat((labels, labels), dim=0)
         miner_output = self.miner(input, labels)
         loss = self.loss(input, labels, miner_output)
 
         return loss
-    
+
+class NPairsLoss(nn.Module):
+    """
+        Implementation of the NPairsLoss using the pytorch-metric-learning library.
+
+        This loss function requires batches that have at most 2 samples for each class.
+    """
+    def __init__(self):
+        super().__init__()
+        self.loss = pml_losses.NPairsLoss()
+    def forward(self, anchor, positive, labels):
+        input = torch.cat((anchor, positive), dim=0)
+        labels = torch.cat((labels, labels), dim=0)
+        loss = self.loss(input, labels)
+        return loss
     
 
 ###--- Training ---###
@@ -274,11 +338,18 @@ class AngularLoss(nn.Module):
 # The experiments are structured into the "/experiments" directory, where all TensorBoard and PyTorch files can be found
 
 class Trainer:
+    """
+        Trainer Module for metric learning on Market-1501
+    
+    """
     def __init__(self, exp_name, run_name, logging=True):
+        ##-- General Information --##
         self.exp_name = exp_name
         self.run_name = run_name
         self.logging = logging
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+        ##-- Directories --##
         self.experiment_dir = P(os.getcwd()) / 'experiments' / self.exp_name
         self.run_dir = self.experiment_dir / self.run_name
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -286,6 +357,7 @@ class Trainer:
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoint_dir = self.run_dir / 'checkpoints'
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
         self.initialize_training()
 
 
@@ -306,15 +378,17 @@ class Trainer:
 
     
     def initialize_training(self):
+        """
+            Function to initialize the complete training.
+        """
         # Load config for the model
-
         self.config = utils.load_config_from_run(self.exp_name, self.run_name)
         self.config['num_iterations'] = self.config['dataset']['train_size'] // self.config['batch_size']
         self.config['num_eval_iterations'] = self.config['dataset']['test_size'] // self.config['batch_size']
 
         tg.tools.set_random_seed(self.config['random_seed'])
+
         ##-- Load Dataset --##
-        # Simply load the dataset using TorchGadgets and define our dataset to apply the initial augmentations
         base_train_dataset = Market1501(transforms=tv.transforms.ToTensor())
         base_test_dataset = Market1501(transforms=tv.transforms.ToTensor(), is_train=False)
 
@@ -328,30 +402,33 @@ class Trainer:
             test_dataset = DoubleDataset(dataset=base_test_dataset, is_train=False)
             self.training_function = self.run_epoch_double
 
+        num_workers = 2
         
-        if self.config['loss']['type'] in ['AngularLoss', 'NPairLoss']:
-            #train_sampler = NPairSampler(N = self.config['batch_size'], dataset_length = self.config['dataset']['train_size'])
-            #test_sampler = NPairSampler(N = self.config['batch_size'], dataset_length = self.config['dataset']['test_size'])
-            train_sampler = None
-            test_sampler = None
-        else:
-            train_sampler = None
-            test_sampler = None
+        if self.config['loss']['type'] in ['NPairsLoss']:
+            train_sampler = NPairSampler(N = self.config['batch_size'], data_source = self.config['dataset']['train_size'])
+            test_sampler = NPairSampler(N = self.config['batch_size'], data_source = self.config['dataset']['test_size'])
+            self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], drop_last=True,sampler=train_sampler, num_workers=num_workers)
+            self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], drop_last=True, sampler=test_sampler, num_workers=num_workers)
 
-        self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True,batch_sampler=train_sampler, num_workers=2)
-        self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, batch_sampler=test_sampler, num_workers=2)
-        ##-- Logging --##
-        # Directory of the run that we write our logs to
+        else:
+            self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, num_workers=num_workers)
+            self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, num_workers=num_workers)
+        
+        ##-- Model --##
         self.model = SiameseModel(emb_dim=self.config['model']['emb_dim'], pretrained=self.config['model']['pretrained'])
         self.model = self.model.to(self.device)
-        # Explicitely define logger to enable TensorBoard logging and setting the log directory
+        
+        ##-- Logging --##
         if self.logging:
             self.logger = tg.logging.Logger(log_dir=self.log_dir, checkpoint_dir=self.checkpoint_dir, model_config=self.config, save_internal=True)
 
+        ##-- Loss --##
         if self.config['loss']['type'] == 'TripletLoss':
             self.criterion = TripletLoss(margin=self.config['loss']['margin'], reduce=self.config['loss']['reduce'], negative_mining=self.config['loss']['mining'])
         elif self.config['loss']['type'] == 'AngularLoss':
             self.criterion = AngularLoss(alpha=self.config['loss']['alpha'])
+        elif self.config['loss']['type'] == 'NPairsLoss':
+            self.criterion = NPairsLoss()
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config['learning_rate'], betas=(0.5, 0.9))
 
@@ -493,23 +570,6 @@ def training(exp_names, run_names):
         trainer.fit()
 
 
-###--- Evaluation ---###
-# This is the function used for evaluation.
-# The different implementations of the evaluation metrics can be found in the TorchGadgets package
-# The structure of this function is close to the training function.
-
-
-
-###--- Hyperparameter Tuning ---###
-# These are the functions used for conducting Optuna studies.
-
-
-def hyperparameter_tuning(exp_name, run_name):
-    print("Hyperparameter tuning not implemented...")
-    return
-
-
-
 
 if __name__ == '__main__':
 
@@ -554,13 +614,7 @@ if __name__ == '__main__':
         exp_name = args.exp if args.exp is not None else os.environ.get('CURRENT_EXP')
         run_name = args.run if args.run is not None else os.environ.get('CURRENT_RUN')
         utils.create_run(exp_name, run_name)
-    
-    if args.opt_study:
-        assert (args.exp is not None or 'CURRENT_EXP' in os.environ) and (args.run is not None or 'CURRENT_RUN' in os.environ), 'Please provide an experiment and run name'
-        exp_name = args.exp if args.exp is not None else os.environ.get('CURRENT_EXP')
-        run_name = args.run if args.run is not None else os.environ.get('CURRENT_RUN')
-        optimization_study(exp_name, run_name, study_name='opt_study', n_trials=args.n)
-    
+
     if args.copy_conf:
         assert (args.exp is not None or 'CURRENT_EXP' in os.environ) and (args.run is not None or 'CURRENT_RUN' in os.environ) and args.conf is not None, 'Please provide an experiment and run name and the name of the config file'
         exp_name = args.exp if args.exp is not None else os.environ.get('CURRENT_EXP')
@@ -572,13 +626,7 @@ if __name__ == '__main__':
         exp_name = args.exp if args.exp is not None else os.environ.get('CURRENT_EXP')
         run_name = args.run if args.run is not None else os.environ.get('CURRENT_RUN')
         utils.clear_logs(exp_name, run_name)
-
-    if args.tuning:
-        assert (args.exp is not None or 'CURRENT_EXP' in os.environ) and (args.run is not None or 'CURRENT_RUN' in os.environ), 'Please provide an experiment and run name'
-        exp_name = args.exp if args.exp is not None else os.environ.get('CURRENT_EXP')
-        run_name = args.run if args.run is not None else os.environ.get('CURRENT_RUN')
-        hyperparameter_tuning(exp_name, run_name)
-
+        
     if args.train:
         assert ((args.exp is not None or 'CURRENT_EXP' in os.environ) and (args.run is not None or 'CURRENT_RUN' in os.environ)) or (len(EXPERIMENT_NAMES)!=0 and len(RUN_NAMES)!=0), 'Please provide an experiment and run name'
         if len(EXPERIMENT_NAMES) != 0:
@@ -590,14 +638,3 @@ if __name__ == '__main__':
             run_name = [args.run] if args.run is not None else [os.environ.get('CURRENT_RUN')]
         training(exp_name, run_name)
 
-    if args.evaluate:
-        assert ((args.exp is not None or 'CURRENT_EXP' in os.environ) and (args.run is not None or 'CURRENT_RUN' in os.environ)) or (len(EXPERIMENT_NAMES)!=0 and len(RUN_NAMES)!=0), 'Please provide an experiment and run name'
-        if len(EXPERIMENT_NAMES) != 0:
-            assert len(EXPERIMENT_NAMES) == len(RUN_NAMES), 'Length of experiment and run list must be the same'
-            exp_name = EXPERIMENT_NAMES
-            run_name = RUN_NAMES
-        else:       
-            exp_name = [args.exp] if args.exp is not None else [os.environ.get('CURRENT_EXP')]
-            run_name = [args.run] if args.run is not None else [os.environ.get('CURRENT_RUN')]
-        evaluation(exp_name, run_name)
-    

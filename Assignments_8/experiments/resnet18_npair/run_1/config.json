@@ -6,7 +6,7 @@
         "stack_input": true
     },
     "batch_size": 128,
-    "num_epochs": 20,
+    "num_epochs": 40,
     "num_iterations": 62,
     "num_eval_iterations": 200,
     "learning_rate": 3e-04,
@@ -47,8 +47,6 @@
         "type": "Adam"
     },
     "loss": {
-        "type": "NPairLoss",
-        "alpha": 0.2,
-   
+        "type": "NPairsLoss"
     }
 }
