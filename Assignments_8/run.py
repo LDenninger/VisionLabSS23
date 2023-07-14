@@ -189,6 +189,7 @@ class NPairSampler(Sampler):
                 avail_data[label].remove(index)
                 if len(avail_data[label]) == 0:
                     avail_data.remove(label)
+    
 
 ###--- Loss Functions ---###
 
