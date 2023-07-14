@@ -151,13 +151,12 @@ class DoubleDataset(Dataset):
         return (anchor_img, positive_img), (anchor_label, positive_label)
     
 class NPairSampler(Sampler):
-    def __init__(self, N, dataset_length, data_path="data/Market-1501", drop_last=True, is_train=True, allow_vialation=True) -> None:
-        super(NPairSampler, self).__init__()
+    def __init__(self, N, data_source, data_path="data/Market-1501", drop_last=True, is_train=True) -> None:
+        super().__init__(data_source)
 
         self.N = N
-        self.allow_vialation = allow_vialation
-        self.dataset_length = dataset_length
-        self.iterations = dataset_length // N if drop_last else dataset_length // N + 1
+        self.dataset_length = data_source
+        self.iterations = self.dataset_length // N if drop_last else self.dataset_length // N + 1
         with open(os.path.join(data_path, 'train_meta_dir.json' if is_train else 'test_meta_dir.json'), 'r') as f:
             self.meta_dir = json.load(f)
         self.class_size = {}
@@ -166,29 +165,43 @@ class NPairSampler(Sampler):
         self.labels = self.meta_dir.keys()
         assert  self.N <= len(self.meta_dir.keys()), "Please provide N larger than the number of classes"
 
-
     def __iter__(self):
-
-        avail_data = copy.deepcopy(self.meta_dir.keys())
-        class_size = copy.deepcopy(self.class_size)
+        avail_data = copy.deepcopy(self.meta_dir)
+        removed_labels = []
 
         indices = []
-        for iter in range(self.iterations):
-            avail_keys = avail_data.keys()
-            np.random.shuffle(avail_keys)
+        for i in range(self.iterations):
+            ext_req = False
+            avail_keys = list(avail_data.keys())
 
             if len(avail_keys) < self.N:
-                if self.allow_vialation:
-                    diff = self.N - len(avail_keys)
-
-                    
-            random_labels = avail_keys[:self.N]
+                ext_req = True
+                diff = self.N - len(avail_keys)
+                np.random.shuffle(removed_labels)
+                ext_ind = removed_labels[:diff]
+                avail_keys = avail_keys + ext_ind
+                np.random.shuffle(avail_keys)
+                random_labels = avail_keys
+            else:
+                np.random.shuffle(avail_keys)
+                random_labels = avail_keys[:self.N]
             for label in random_labels:
-                index = np.random.choice(avail_data[label].keys())
-                indices.append(index)
-                avail_data[label].remove(index)
-                if len(avail_data[label]) == 0:
-                    avail_data.remove(label)
+                if ext_req and label in ext_ind:
+                    index = np.random.choice(list(self.meta_dir[label].keys()))
+                else:
+                    index = np.random.choice(list(avail_data[label].keys()))
+                    avail_data[label].pop(index)
+
+                    if len(avail_data[label]) == 0:
+                        avail_data.pop(label)
+                        removed_labels.append(label)
+
+                indices.append(int(index))
+                    
+        return iter(indices)
+
+    def __len__(self):
+        return self.dataset_length
 
 ###--- Loss Functions ---###
 
@@ -251,6 +264,9 @@ class TripletLoss(nn.Module):
         return loss
     
 class AngularLoss(nn.Module):
+    """
+        Implementation of the angular loss function using the pytorch-metric-learning library.
+    """
 
     def __init__(self, alpha=40):
         super().__init__()
@@ -258,14 +274,23 @@ class AngularLoss(nn.Module):
         self.miner = pml_miners.AngularMiner()
         return
     
-    def forward(self, anchor, positive, labels=None):
+    def forward(self, anchor, positive, labels):
         input = torch.cat((anchor, positive), dim=0)
         labels = torch.cat((labels, labels), dim=0)
         miner_output = self.miner(input, labels)
         loss = self.loss(input, labels, miner_output)
 
         return loss
-    
+
+class NPairsLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.loss = pml_losses.NPairsLoss()
+    def forward(self, anchor, positive, labels):
+        input = torch.cat((anchor, positive), dim=0)
+        labels = torch.cat((labels, labels), dim=0)
+        loss = self.loss(input, labels)
+        return loss
     
 
 ###--- Training ---###
@@ -327,18 +352,18 @@ class Trainer:
             test_dataset = DoubleDataset(dataset=base_test_dataset, is_train=False)
             self.training_function = self.run_epoch_double
 
+        num_workers = 2
         
-        if self.config['loss']['type'] in ['AngularLoss', 'NPairLoss']:
-            #train_sampler = NPairSampler(N = self.config['batch_size'], dataset_length = self.config['dataset']['train_size'])
-            #test_sampler = NPairSampler(N = self.config['batch_size'], dataset_length = self.config['dataset']['test_size'])
-            train_sampler = None
-            test_sampler = None
-        else:
-            train_sampler = None
-            test_sampler = None
+        if self.config['loss']['type'] in ['NPairsLoss']:
+            train_sampler = NPairSampler(N = self.config['batch_size'], data_source = self.config['dataset']['train_size'])
+            test_sampler = NPairSampler(N = self.config['batch_size'], data_source = self.config['dataset']['test_size'])
+            self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], drop_last=True,sampler=train_sampler, num_workers=num_workers)
+            self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], drop_last=True, sampler=test_sampler, num_workers=num_workers)
 
-        self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True,batch_sampler=train_sampler, num_workers=2)
-        self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, batch_sampler=test_sampler, num_workers=2)
+
+        else:
+            self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, num_workers=num_workers)
+            self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config['batch_size'], shuffle=True, drop_last=True, num_workers=num_workers)
         ##-- Logging --##
         # Directory of the run that we write our logs to
         self.model = SiameseModel(emb_dim=self.config['model']['emb_dim'], pretrained=self.config['model']['pretrained'])
@@ -351,6 +376,8 @@ class Trainer:
             self.criterion = TripletLoss(margin=self.config['loss']['margin'], reduce=self.config['loss']['reduce'], negative_mining=self.config['loss']['mining'])
         elif self.config['loss']['type'] == 'AngularLoss':
             self.criterion = AngularLoss(alpha=self.config['loss']['alpha'])
+        elif self.config['loss']['type'] == 'NPairsLoss':
+            self.criterion = NPairsLoss()
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config['learning_rate'], betas=(0.5, 0.9))
 

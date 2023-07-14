@@ -47,8 +47,6 @@
         "type": "Adam"
     },
     "loss": {
-        "type": "NPairLoss",
-        "alpha": 0.2,
-   
+        "type": "NPairsLoss"
     }
 }
